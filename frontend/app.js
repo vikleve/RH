@@ -6,6 +6,8 @@
 
 // Estado global da aplicação
 const Estado = {
+  usuarioAutenticado: null,
+  token: sessionStorage.getItem('AUTH_TOKEN') || null,
   colaboradores: [],
   colaboradorEmEdicao: null,
   colaboradorParaInativar: null,
@@ -18,6 +20,15 @@ const Estado = {
 };
 
 const API_BASE = '/api';
+
+function getAuthHeaders() {
+  const headers = { 'Content-Type': 'application/json' };
+  const token = Estado.token || sessionStorage.getItem('AUTH_TOKEN');
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  }
+  return headers;
+}
 
 // ============================================================================
 // Utilitários de Máscara e Validação
@@ -117,10 +128,230 @@ function exibirToast(mensagem, tipo = 'success') {
 }
 
 // ============================================================================
-// Camada de Dados (API e LocalStorage Fallback)
+// ============================================================================
+// Gerenciador de Autenticação e Sessão (RF-40, RF-41, RF-43)
+// ============================================================================
+const AuthManager = {
+  token: sessionStorage.getItem('AUTH_TOKEN') || null,
+  usuario: null,
+
+  async inicializar() {
+    this.configurarEventosLogin();
+    
+    // Tenta validar a sessão atual com o backend
+    try {
+      const resp = await fetch(`${API_BASE}/auth/me`, {
+        method: 'GET',
+        headers: getAuthHeaders(),
+        credentials: 'include'
+      });
+
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data.sucesso && data.usuario) {
+          this.usuario = data.usuario;
+          Estado.usuarioAutenticado = data.usuario;
+          this.exibirTelaSistema(data.usuario);
+          await carregarColaboradores();
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn('Sessão não autenticada no servidor.');
+    }
+
+    // Não autenticado: exibe tela de login
+    this.exibirTelaLogin();
+  },
+
+  exibirTelaLogin(mensagemErro = null) {
+    const telaLogin = document.getElementById('tela-login');
+    const telaSistema = document.getElementById('tela-sistema');
+    if (telaLogin) telaLogin.classList.remove('hidden');
+    if (telaSistema) telaSistema.classList.add('hidden');
+
+    this.token = null;
+    this.usuario = null;
+    Estado.token = null;
+    Estado.usuarioAutenticado = null;
+    Estado.colaboradores = [];
+    sessionStorage.removeItem('AUTH_TOKEN');
+
+    renderizarTabela();
+    atualizarCardsMetricas();
+
+    const alerta = document.getElementById('login-alerta');
+    const alertaMsg = document.getElementById('login-alerta-mensagem');
+    if (alerta && alertaMsg) {
+      if (mensagemErro) {
+        alertaMsg.textContent = mensagemErro;
+        alerta.classList.remove('hidden');
+      } else {
+        alerta.classList.add('hidden');
+      }
+    }
+  },
+
+  exibirTelaSistema(usuario) {
+    const telaLogin = document.getElementById('tela-login');
+    const telaSistema = document.getElementById('tela-sistema');
+    if (telaLogin) telaLogin.classList.add('hidden');
+    if (telaSistema) telaSistema.classList.remove('hidden');
+
+    const elNome = document.getElementById('header-user-nome');
+    const elPerfil = document.getElementById('header-user-perfil');
+    if (elNome) elNome.textContent = usuario.nome_completo || usuario.usuario;
+    if (elPerfil) elPerfil.textContent = usuario.perfil || 'administrador';
+  },
+
+  configurarEventosLogin() {
+    const formLogin = document.getElementById('form-login');
+    const btnToggleSenha = document.getElementById('btn-toggle-senha');
+    const inputSenha = document.getElementById('login-senha');
+    const inputIdentificador = document.getElementById('login-identificador');
+    const btnLogout = document.getElementById('btn-logout');
+
+    if (btnToggleSenha && inputSenha) {
+      btnToggleSenha.addEventListener('click', () => {
+        const isPassword = inputSenha.getAttribute('type') === 'password';
+        inputSenha.setAttribute('type', isPassword ? 'text' : 'password');
+        const iconClosed = document.getElementById('icon-eye-closed');
+        const iconOpen = document.getElementById('icon-eye-open');
+        if (iconClosed) iconClosed.classList.toggle('hidden', isPassword);
+        if (iconOpen) iconOpen.classList.toggle('hidden', !isPassword);
+      });
+    }
+
+    if (inputIdentificador) {
+      inputIdentificador.addEventListener('input', () => {
+        const err = document.getElementById('erro-login-identificador');
+        const alertBox = document.getElementById('login-alerta');
+        if (err) err.classList.add('hidden');
+        if (alertBox) alertBox.classList.add('hidden');
+      });
+    }
+
+    if (inputSenha) {
+      inputSenha.addEventListener('input', () => {
+        const err = document.getElementById('erro-login-senha');
+        const alertBox = document.getElementById('login-alerta');
+        if (err) err.classList.add('hidden');
+        if (alertBox) alertBox.classList.add('hidden');
+      });
+    }
+
+    if (formLogin) {
+      formLogin.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        await this.executarLogin();
+      });
+    }
+
+    if (btnLogout) {
+      btnLogout.addEventListener('click', async () => {
+        await this.executarLogout();
+      });
+    }
+  },
+
+  async executarLogin() {
+    const inputIdentificador = document.getElementById('login-identificador');
+    const inputSenha = document.getElementById('login-senha');
+    const erroIdentificador = document.getElementById('erro-login-identificador');
+    const erroSenha = document.getElementById('erro-login-senha');
+    const alerta = document.getElementById('login-alerta');
+    const alertaMsg = document.getElementById('login-alerta-mensagem');
+    const btnEntrar = document.getElementById('btn-entrar');
+    const spinner = document.getElementById('login-spinner');
+    const btnTexto = document.getElementById('btn-entrar-texto');
+
+    const identificador = (inputIdentificador.value || '').trim();
+    const senha = inputSenha.value || '';
+
+    let valido = true;
+    if (!identificador) {
+      if (erroIdentificador) erroIdentificador.classList.remove('hidden');
+      valido = false;
+    } else {
+      if (erroIdentificador) erroIdentificador.classList.add('hidden');
+    }
+
+    if (!senha) {
+      if (erroSenha) erroSenha.classList.remove('hidden');
+      valido = false;
+    } else {
+      if (erroSenha) erroSenha.classList.add('hidden');
+    }
+
+    if (!valido) return;
+
+    // Indicador visual de processamento
+    if (btnEntrar) btnEntrar.disabled = true;
+    if (spinner) spinner.classList.remove('hidden');
+    if (btnTexto) btnTexto.textContent = 'Autenticando...';
+    if (alerta) alerta.classList.add('hidden');
+
+    try {
+      const resp = await fetch(`${API_BASE}/auth/login`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ identificador, senha })
+      });
+
+      const data = await resp.json();
+
+      if (resp.ok && data.sucesso) {
+        this.token = data.token;
+        this.usuario = data.usuario;
+        Estado.token = data.token;
+        Estado.usuarioAutenticado = data.usuario;
+        sessionStorage.setItem('AUTH_TOKEN', data.token);
+
+        inputSenha.value = '';
+        this.exibirTelaSistema(data.usuario);
+        exibirToast(`Autenticado como ${data.usuario.nome_completo}`, 'success');
+        await carregarColaboradores();
+      } else {
+        if (alertaMsg) alertaMsg.textContent = data.mensagem || 'Credenciais inválidas.';
+        if (alerta) alerta.classList.remove('hidden');
+      }
+    } catch (e) {
+      if (alertaMsg) alertaMsg.textContent = 'Serviço de autenticação temporariamente indisponível. Tente novamente.';
+      if (alerta) alerta.classList.remove('hidden');
+    } finally {
+      if (btnEntrar) btnEntrar.disabled = false;
+      if (spinner) spinner.classList.add('hidden');
+      if (btnTexto) btnTexto.textContent = 'Entrar no Sistema';
+    }
+  },
+
+  async executarLogout() {
+    try {
+      await fetch(`${API_BASE}/auth/logout`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        credentials: 'include'
+      });
+    } catch (e) {
+      console.warn('Erro ao notificar logout no servidor:', e);
+    } finally {
+      this.exibirTelaLogin();
+      exibirToast('Sessão encerrada com sucesso.', 'info');
+    }
+  }
+};
+
+// ============================================================================
+// Camada de Dados (API e LocalStorage Seguro)
 // ============================================================================
 const DadosService = {
   async listar(filtros = {}) {
+    // Visitante não autenticado não deve receber lista de colaboradores
+    if (!Estado.usuarioAutenticado && !sessionStorage.getItem('AUTH_TOKEN')) {
+      return [];
+    }
+
     if (Estado.usaApi) {
       try {
         const params = new URLSearchParams();
@@ -128,13 +359,22 @@ const DadosService = {
         if (filtros.situacao && filtros.situacao !== 'todos') params.set('situacao', filtros.situacao);
         if (filtros.setor) params.set('setor', filtros.setor);
 
-        const resp = await fetch(`${API_BASE}/colaboradores?${params.toString()}`);
+        const resp = await fetch(`${API_BASE}/colaboradores?${params.toString()}`, {
+          headers: getAuthHeaders(),
+          credentials: 'include'
+        });
+
+        if (resp.status === 401) {
+          AuthManager.exibirTelaLogin('Sessão expirada. Faça login novamente.');
+          return [];
+        }
+
         const data = await resp.json();
         if (data.sucesso) return data.dados;
         throw new Error(data.mensagem || 'Erro ao carregar colaboradores.');
       } catch (e) {
-        console.warn('API indisponível, utilizando armazenamento local:', e.message);
-        Estado.usaApi = false;
+        console.warn('Erro ao consultar API:', e.message);
+        return [];
       }
     }
     return this._listarLocal(filtros);
@@ -142,14 +382,17 @@ const DadosService = {
 
   async obter(id) {
     if (Estado.usaApi) {
-      try {
-        const resp = await fetch(`${API_BASE}/colaboradores/${id}`);
-        const data = await resp.json();
-        if (data.sucesso) return data.dados;
-        throw new Error(data.mensagem || 'Colaborador não encontrado.');
-      } catch (e) {
-        console.warn('Fallback para armazenamento local');
+      const resp = await fetch(`${API_BASE}/colaboradores/${id}`, {
+        headers: getAuthHeaders(),
+        credentials: 'include'
+      });
+      if (resp.status === 401) {
+        AuthManager.exibirTelaLogin('Sessão expirada. Faça login novamente.');
+        throw new Error('Não autenticado.');
       }
+      const data = await resp.json();
+      if (data.sucesso) return data.dados;
+      throw new Error(data.mensagem || 'Colaborador não encontrado.');
     }
     return this._obterLocal(id);
   },
@@ -158,9 +401,14 @@ const DadosService = {
     if (Estado.usaApi) {
       const resp = await fetch(`${API_BASE}/colaboradores`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
+        credentials: 'include',
         body: JSON.stringify(dados)
       });
+      if (resp.status === 401) {
+        AuthManager.exibirTelaLogin('Sessão expirada. Faça login novamente.');
+        throw new Error('Não autenticado.');
+      }
       const data = await resp.json();
       if (!resp.ok) {
         const err = new Error(data.mensagem || 'Erro de validação');
@@ -176,9 +424,14 @@ const DadosService = {
     if (Estado.usaApi) {
       const resp = await fetch(`${API_BASE}/colaboradores/${id}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
+        credentials: 'include',
         body: JSON.stringify(dados)
       });
+      if (resp.status === 401) {
+        AuthManager.exibirTelaLogin('Sessão expirada. Faça login novamente.');
+        throw new Error('Não autenticado.');
+      }
       const data = await resp.json();
       if (!resp.ok) {
         const err = new Error(data.mensagem || 'Erro ao atualizar');
@@ -194,9 +447,14 @@ const DadosService = {
     if (Estado.usaApi) {
       const resp = await fetch(`${API_BASE}/colaboradores/${id}/inativar`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ motivo, usuario: 'Administrador (RH/GTI)' })
+        headers: getAuthHeaders(),
+        credentials: 'include',
+        body: JSON.stringify({ motivo })
       });
+      if (resp.status === 401) {
+        AuthManager.exibirTelaLogin('Sessão expirada. Faça login novamente.');
+        throw new Error('Não autenticado.');
+      }
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.mensagem || 'Erro ao inativar colaborador');
       return data.dados;
@@ -208,9 +466,14 @@ const DadosService = {
     if (Estado.usaApi) {
       const resp = await fetch(`${API_BASE}/colaboradores/${id}/reativar`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ usuario: 'Administrador (RH/GTI)' })
+        headers: getAuthHeaders(),
+        credentials: 'include',
+        body: JSON.stringify({})
       });
+      if (resp.status === 401) {
+        AuthManager.exibirTelaLogin('Sessão expirada. Faça login novamente.');
+        throw new Error('Não autenticado.');
+      }
       const data = await resp.json();
       if (!resp.ok) throw new Error(data.mensagem || 'Erro ao reativar colaborador');
       return data.dados;
@@ -218,49 +481,15 @@ const DadosService = {
     return this._reativarLocal(id);
   },
 
-  // Implementação Local (Fallback autônomo offline)
+  // Implementação Local Segura (Sem seed para visitantes anônimos)
   _getStorage() {
     const raw = localStorage.getItem('DP_COLABORADORES');
-    if (!raw) {
-      const seed = [
-        {
-          id: 1,
-          matricula: 'RH-1001',
-          nome_completo: 'Mariana Ramos Ferreira',
-          cpf: '529.982.247-25',
-          rg: '33.444.555-6',
-          data_nascimento: '1992-08-20',
-          telefone: '(11) 98765-4321',
-          email: 'mariana.ramos@empresa.com.br',
-          logradouro: 'Av. Paulista',
-          numero: '1000',
-          bairro: 'Bela Vista',
-          cidade: 'São Paulo',
-          uf: 'SP',
-          cep: '01310-100',
-          data_admissao: '2021-05-10',
-          cargo: 'Supervisora de DP',
-          setor: 'Departamento Pessoal',
-          salario_base: 5900.00,
-          situacao: 'ativo',
-          total_dependentes: 1,
-          dependentes: [{ id: 1, nome: 'Julia Ferreira', cpf: '', parentesco: 'Filho(a)' }],
-          historico: [
-            {
-              id: 1,
-              data_hora: '2021-05-10 09:00:00',
-              campo_alterado: 'Criação de Cadastro',
-              valor_anterior: null,
-              valor_novo: 'Colaborador admitido com matrícula RH-1001.',
-              usuario_responsavel: 'Sistema/Administrador'
-            }
-          ]
-        }
-      ];
-      localStorage.setItem('DP_COLABORADORES', JSON.stringify(seed));
-      return seed;
+    if (!raw) return [];
+    try {
+      return JSON.parse(raw);
+    } catch {
+      return [];
     }
-    return JSON.parse(raw);
   },
 
   _saveStorage(lista) {
@@ -945,5 +1174,5 @@ function configurarEventos() {
 // Inicialização
 document.addEventListener('DOMContentLoaded', () => {
   configurarEventos();
-  carregarColaboradores();
+  AuthManager.inicializar();
 });

@@ -7,7 +7,7 @@ import sqlite3
 import os
 from datetime import datetime
 
-DEFAULT_DB_PATH = os.path.join(os.path.dirname(__file__), "..", "colaboradores.db")
+DEFAULT_DB_PATH = "/tmp/colaboradores.db" if os.environ.get("VERCEL") else os.path.join(os.path.dirname(__file__), "..", "colaboradores.db")
 
 def get_connection(db_path: str = None) -> sqlite3.Connection:
     """Retorna uma conexão configurada com o banco SQLite."""
@@ -74,6 +74,34 @@ def init_db(db_path: str = None):
             FOREIGN KEY (colaborador_id) REFERENCES colaboradores (id) ON DELETE CASCADE
         );
     """)
+
+    # 4. Tabela de Usuários do Sistema (Autenticação e Perfis — RF-40, RF-41)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS usuarios (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            email TEXT UNIQUE NOT NULL,
+            usuario TEXT UNIQUE NOT NULL,
+            nome_completo TEXT NOT NULL,
+            senha_hash TEXT NOT NULL,
+            salt TEXT NOT NULL,
+            perfil TEXT NOT NULL CHECK (perfil IN ('administrador', 'analista_rh', 'operador_dp')),
+            status TEXT NOT NULL DEFAULT 'ativo' CHECK (status IN ('ativo', 'inativo')),
+            criado_em TEXT NOT NULL,
+            ultimo_login TEXT
+        );
+    """)
+
+    # 5. Tabela de Sessões Criptográficas Ativas (RF-43, RNF-01, RNF-02)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS sessoes (
+            token TEXT PRIMARY KEY,
+            usuario_id INTEGER NOT NULL,
+            criado_em TEXT NOT NULL,
+            expira_em TEXT NOT NULL,
+            revogado INTEGER NOT NULL DEFAULT 0,
+            FOREIGN KEY (usuario_id) REFERENCES usuarios (id) ON DELETE CASCADE
+        );
+    """)
     
     # Índices para pesquisa e performance
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_colab_matricula ON colaboradores(matricula);")
@@ -83,9 +111,18 @@ def init_db(db_path: str = None):
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_colab_setor ON colaboradores(setor);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_hist_colab ON historico_alteracoes(colaborador_id);")
     cursor.execute("CREATE INDEX IF NOT EXISTS idx_dep_colab ON dependentes(colaborador_id);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_usuario_email ON usuarios(email);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_usuario_login ON usuarios(usuario);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_sessao_token ON sessoes(token);")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_sessao_user ON sessoes(usuario_id);")
     
     conn.commit()
     conn.close()
+
+    # Provisionar conta padrão de administrador se ainda não existir
+    from .auth import AuthService
+    auth_service = AuthService(db_path=db_path)
+    auth_service.provisionar_usuario_inicial()
 
 if __name__ == "__main__":
     init_db()

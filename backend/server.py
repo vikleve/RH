@@ -1,14 +1,17 @@
 """
-Servidor HTTP REST e Servidor de Arquivos Estáticos — Backend
-Atende aos requisitos de arquitetura desacoplada (GTI) e persistência.
+Servidor HTTP REST e Servidor de Arquivos Estáticos — Backend RH/DP
+Atende aos requisitos de autenticação real (RF-40, RF-41, RF-43, RNF-01 a RNF-03),
+persistência durável e controle de acesso a endpoints protegidos.
 Executa de forma autônoma sem dependências externas (biblioteca padrão Python).
 """
 import http.server
+import http.cookies
 import socketserver
 import json
 import os
 import urllib.parse
 from .service import ColaboradorService, ValidacaoException, RecursoNaoEncontradoException
+from .auth import AuthService, CredenciaisInvalidasException
 
 PORT = 8000
 FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend"))
@@ -23,22 +26,88 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             self.server.colab_service = ColaboradorService()
         return self.server.colab_service
 
-    def _enviar_json(self, status_code: int, dados: dict | list):
-        """Envia resposta JSON com headers apropriados."""
+    @property
+    def auth_service(self) -> AuthService:
+        if not hasattr(self.server, "auth_service"):
+            db_path = getattr(self.service, "db_path", None)
+            self.server.auth_service = AuthService(db_path=db_path)
+        return self.server.auth_service
+
+    def _extrair_token_sessao(self) -> str | None:
+        """Extrai o token de autenticação a partir do header Authorization ou Cookie de sessão."""
+        # 1. Authorization: Bearer <token>
+        auth_header = self.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            token = auth_header[7:].strip()
+            if token:
+                return token
+
+        # 2. Cookie: session_token=<token>
+        cookie_header = self.headers.get("Cookie", "")
+        if cookie_header:
+            try:
+                cookies = http.cookies.SimpleCookie()
+                cookies.load(cookie_header)
+                if "session_token" in cookies:
+                    return cookies["session_token"].value
+            except Exception:
+                pass
+
+        return None
+
+    def _obter_usuario_autenticado(self) -> dict | None:
+        """Retorna os dados do usuário autenticado a partir do token de sessão."""
+        token = self._extrair_token_sessao()
+        if not token:
+            return None
+        return self.auth_service.validar_sessao(token)
+
+    def _exigir_autenticacao(self) -> dict | None:
+        """
+        Verifica se a requisição possui autenticação válida.
+        Caso contrário, envia imediatamente resposta HTTP 401 Unauthorized e retorna None.
+        """
+        usuario = self._obter_usuario_autenticado()
+        if not usuario:
+            self._enviar_json(401, {
+                "sucesso": False,
+                "mensagem": "Acesso não autorizado. É necessário efetuar login para acessar este recurso.",
+                "codigo": "NAO_AUTENTICADO"
+            })
+            return None
+        return usuario
+
+    def _enviar_json(self, status_code: int, dados: dict | list, set_cookie: str = None, delete_cookie: str = None):
+        """Envia resposta JSON com cabeçalhos de segurança e suporte a cookies HttpOnly."""
         corpo = json.dumps(dados, ensure_ascii=False, indent=2).encode("utf-8")
         self.send_response(status_code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(corpo)))
-        self.send_header("Access-Control-Allow-Origin", "*")
+        
+        origem = self.headers.get("Origin", "*")
+        self.send_header("Access-Control-Allow-Origin", origem)
+        self.send_header("Access-Control-Allow-Credentials", "true")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        
+        if set_cookie:
+            proto = self.headers.get("X-Forwarded-Proto", "")
+            secure_flag = "; Secure" if proto == "https" else ""
+            self.send_header("Set-Cookie", f"{set_cookie}; Path=/; HttpOnly; SameSite=Lax{secure_flag}")
+        if delete_cookie:
+            self.send_header("Set-Cookie", f"{delete_cookie}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax")
+            
         self.end_headers()
         self.wfile.write(corpo)
 
     def do_OPTIONS(self):
-        """Suporte a pre-flight CORS."""
+        """Suporte a pre-flight CORS com credenciais."""
         self.send_response(204)
-        self.send_header("Access-Control-Allow-Origin", "*")
+        origem = self.headers.get("Origin", "*")
+        self.send_header("Access-Control-Allow-Origin", origem)
+        self.send_header("Access-Control-Allow-Credentials", "true")
         self.send_header("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS")
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
         self.end_headers()
@@ -60,18 +129,34 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
         path = parsed_url.path
         query = urllib.parse.parse_qs(parsed_url.query)
 
-        # Rota: Listar colaboradores GET /api/colaboradores
+        # Rota de verificação de sessão: GET /api/auth/me
+        if path == "/api/auth/me":
+            usuario = self._exigir_autenticacao()
+            if not usuario:
+                return
+            return self._enviar_json(200, {
+                "sucesso": True,
+                "usuario": usuario
+            })
+
+        # Rota protegida: Listar colaboradores GET /api/colaboradores
         if path == "/api/colaboradores":
+            usuario = self._exigir_autenticacao()
+            if not usuario:
+                return
             termo = query.get("q", [None])[0]
             situacao = query.get("situacao", [None])[0]
             setor = query.get("setor", [None])[0]
             colabs = self.service.listar(termo=termo, situacao=situacao, setor=setor)
             return self._enviar_json(200, {"sucesso": True, "total": len(colabs), "dados": colabs})
 
-        # Rota: Obter colaborador GET /api/colaboradores/<id>
+        # Rota protegida: Obter colaborador GET /api/colaboradores/<id>
         if path.startswith("/api/colaboradores/"):
             partes = path.strip("/").split("/")
             if len(partes) == 3 and partes[2].isdigit():
+                usuario = self._exigir_autenticacao()
+                if not usuario:
+                    return
                 colab_id = int(partes[2])
                 try:
                     colab = self.service.obter_por_id(colab_id)
@@ -83,14 +168,59 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
         return super().do_GET()
 
     def do_POST(self):
-        """Trata criação de colaborador POST /api/colaboradores."""
+        """Trata requisições POST para autenticação e criação de colaboradores."""
         parsed_url = urllib.parse.urlparse(self.path)
         path = parsed_url.path
 
-        if path == "/api/colaboradores":
+        # Rota pública: Login POST /api/auth/login
+        if path == "/api/auth/login":
             try:
                 dados = self._ler_json_body()
-                novo = self.service.cadastrar(dados)
+                identificador = dados.get("identificador", "").strip()
+                senha = dados.get("senha", "")
+                
+                if not identificador or not senha:
+                    return self._enviar_json(400, {
+                        "sucesso": False,
+                        "mensagem": "Preencha o identificador (e-mail ou usuário) e a senha."
+                    })
+
+                usuario, token = self.auth_service.autenticar(identificador, senha)
+                return self._enviar_json(200, {
+                    "sucesso": True,
+                    "mensagem": "Autenticação realizada com sucesso.",
+                    "token": token,
+                    "usuario": usuario
+                }, set_cookie=f"session_token={token}")
+            except CredenciaisInvalidasException as e:
+                return self._enviar_json(401, {
+                    "sucesso": False,
+                    "mensagem": str(e)
+                })
+            except ValueError as e:
+                return self._enviar_json(400, {"sucesso": False, "mensagem": str(e)})
+            except Exception as e:
+                return self._enviar_json(500, {"sucesso": False, "mensagem": f"Erro interno: {str(e)}"})
+
+        # Rota protegida: Logout POST /api/auth/logout
+        if path == "/api/auth/logout":
+            token = self._extrair_token_sessao()
+            if token:
+                self.auth_service.encerrar_sessao(token)
+            return self._enviar_json(200, {
+                "sucesso": True,
+                "mensagem": "Sessão encerrada com sucesso."
+            }, delete_cookie="session_token")
+
+        # Rota protegida: Cadastrar colaborador POST /api/colaboradores
+        if path == "/api/colaboradores":
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth:
+                return
+            try:
+                dados = self._ler_json_body()
+                nome_responsavel = f"{usuario_auth['nome_completo']} ({usuario_auth['perfil']})"
+                novo = self.service.cadastrar(dados, usuario=nome_responsavel)
                 return self._enviar_json(201, {
                     "sucesso": True,
                     "mensagem": "Colaborador cadastrado com sucesso!",
@@ -116,10 +246,14 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
         partes = path.strip("/").split("/")
 
         if len(partes) == 3 and partes[1] == "colaboradores" and partes[2].isdigit():
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth:
+                return
             colab_id = int(partes[2])
             try:
                 dados = self._ler_json_body()
-                atualizado = self.service.atualizar(colab_id, dados)
+                nome_responsavel = f"{usuario_auth['nome_completo']} ({usuario_auth['perfil']})"
+                atualizado = self.service.atualizar(colab_id, dados, usuario=nome_responsavel)
                 return self._enviar_json(200, {
                     "sucesso": True,
                     "mensagem": "Colaborador atualizado com sucesso!",
@@ -145,23 +279,25 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
         partes = path.strip("/").split("/")
 
         if len(partes) == 4 and partes[1] == "colaboradores" and partes[2].isdigit():
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth:
+                return
             colab_id = int(partes[2])
             acao = partes[3]
 
             try:
                 corpo = self._ler_json_body()
+                nome_responsavel = f"{usuario_auth['nome_completo']} ({usuario_auth['perfil']})"
                 if acao == "inativar":
                     motivo = corpo.get("motivo", "")
-                    usuario = corpo.get("usuario", "Sistema/Administrador")
-                    res = self.service.inativar(colab_id, motivo=motivo, usuario=usuario)
+                    res = self.service.inativar(colab_id, motivo=motivo, usuario=nome_responsavel)
                     return self._enviar_json(200, {
                         "sucesso": True,
                         "mensagem": "Colaborador inativado com sucesso. Histórico preservado.",
                         "dados": res
                     })
                 elif acao == "reativar":
-                    usuario = corpo.get("usuario", "Sistema/Administrador")
-                    res = self.service.reativar(colab_id, usuario=usuario)
+                    res = self.service.reativar(colab_id, usuario=nome_responsavel)
                     return self._enviar_json(200, {
                         "sucesso": True,
                         "mensagem": "Colaborador reativado com sucesso.",
@@ -179,6 +315,7 @@ def run_server(port: int = PORT, db_path: str = None):
     server_address = ("", port)
     httpd = socketserver.TCPServer(server_address, ApiColaboradorHandler)
     httpd.colab_service = ColaboradorService(db_path=db_path)
+    httpd.auth_service = AuthService(db_path=db_path)
     print(f"Servidor rodando em http://localhost:{port}")
     try:
         httpd.serve_forever()
