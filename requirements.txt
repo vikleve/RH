@@ -1,0 +1,2 @@
+# Dependências do Backend Python (Standard Library)
+# O backend foi projetado utilizando apenas a biblioteca padrão do Python (sqlite3, hashlib, secrets, http.server, etc.)

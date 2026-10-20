@@ -17,7 +17,7 @@ def get_connection(db_path: str = None) -> sqlite3.Connection:
     conn.execute("PRAGMA foreign_keys = ON;")
     return conn
 
-def init_db(db_path: str = None):
+def init_db(db_path: str = None, auto_provision: bool = True):
     """Cria as tabelas e índices necessários no banco de dados se não existirem."""
     conn = get_connection(db_path)
     cursor = conn.cursor()
@@ -120,9 +120,10 @@ def init_db(db_path: str = None):
     conn.close()
 
     # Provisionar conta padrão de administrador se ainda não existir
-    from .auth import AuthService
-    auth_service = AuthService(db_path=db_path)
-    auth_service.provisionar_usuario_inicial()
+    if auto_provision:
+        from .auth import AuthService
+        auth_service = AuthService(db_path=db_path, auto_init=False)
+        auth_service.provisionar_usuario_inicial()
 
 if __name__ == "__main__":
     init_db()

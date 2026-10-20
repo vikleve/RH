@@ -2,7 +2,7 @@
 Servidor HTTP REST e Servidor de Arquivos Estáticos — Backend RH/DP
 Atende aos requisitos de autenticação real (RF-40, RF-41, RF-43, RNF-01 a RNF-03),
 persistência durável e controle de acesso a endpoints protegidos.
-Executa de forma autônoma sem dependências externas (biblioteca padrão Python).
+Executa de forma autônoma (localmente) e como Handler Serverless (Vercel).
 """
 import http.server
 import http.cookies
@@ -16,22 +16,78 @@ from .auth import AuthService, CredenciaisInvalidasException
 PORT = 8000
 FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend"))
 
+_global_colab_service = None
+_global_auth_service = None
+
 class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
-        super().__init__(*args, directory=FRONTEND_DIR, **kwargs)
+        self._local_colab_service = None
+        self._local_auth_service = None
+        # Em ambientes serverless (Vercel), FRONTEND_DIR pode não existir no mesmo diretório local
+        dir_to_serve = FRONTEND_DIR if os.path.exists(FRONTEND_DIR) else os.getcwd()
+        super().__init__(*args, directory=dir_to_serve, **kwargs)
 
     @property
     def service(self) -> ColaboradorService:
-        if not hasattr(self.server, "colab_service"):
-            self.server.colab_service = ColaboradorService()
-        return self.server.colab_service
+        """Garante acesso ao ColaboradorService tanto em TCPServer quanto em Serverless Functions."""
+        if hasattr(self, "server") and self.server is not None:
+            if not hasattr(self.server, "colab_service"):
+                self.server.colab_service = ColaboradorService()
+            return self.server.colab_service
+        
+        if getattr(self, "_local_colab_service", None) is None:
+            global _global_colab_service
+            if _global_colab_service is None:
+                _global_colab_service = ColaboradorService()
+            self._local_colab_service = _global_colab_service
+        return self._local_colab_service
 
     @property
     def auth_service(self) -> AuthService:
-        if not hasattr(self.server, "auth_service"):
-            db_path = getattr(self.service, "db_path", None)
-            self.server.auth_service = AuthService(db_path=db_path)
-        return self.server.auth_service
+        """Garante acesso ao AuthService tanto em TCPServer quanto em Serverless Functions."""
+        if hasattr(self, "server") and self.server is not None:
+            if not hasattr(self.server, "auth_service"):
+                db_path = getattr(self.service, "db_path", None)
+                self.server.auth_service = AuthService(db_path=db_path)
+            return self.server.auth_service
+
+        if getattr(self, "_local_auth_service", None) is None:
+            global _global_auth_service
+            if _global_auth_service is None:
+                db_path = getattr(self.service, "db_path", None)
+                _global_auth_service = AuthService(db_path=db_path)
+            self._local_auth_service = _global_auth_service
+        return self._local_auth_service
+
+    def _obter_caminho_e_query(self) -> tuple[str, dict]:
+        """
+        Extrai o caminho da requisição e os parâmetros de query.
+        Suporta ambientes com proxy/rewrites (como Vercel) inspecionando cabeçalhos de rota original.
+        """
+        raw_uri = (
+            self.headers.get("x-forwarded-uri") or
+            self.headers.get("x-matched-path") or
+            self.headers.get("x-invoke-path") or
+            self.path
+        )
+        parsed = urllib.parse.urlparse(raw_uri)
+        path = parsed.path
+
+        # Se o path resolvido for o script do handler (ex: /api/index.py ou /api/index),
+        # extrai a subrota dos cabeçalhos da Vercel
+        if path in ("/api/index.py", "/api/index", "/api"):
+            route_matches = self.headers.get("x-now-route-matches", "")
+            if "1=" in route_matches:
+                subroute = route_matches.split("1=")[-1].split("&")[0]
+                path = f"/api/{subroute}"
+            elif parsed.query:
+                q_dict = urllib.parse.parse_qs(parsed.query)
+                if "path" in q_dict:
+                    subpath = q_dict["path"][0]
+                    path = f"/api/{subpath}" if not subpath.startswith("/") else subpath
+
+        query = urllib.parse.parse_qs(parsed.query)
+        return path, query
 
     def _extrair_token_sessao(self) -> str | None:
         """Extrai o token de autenticação a partir do header Authorization ou Cookie de sessão."""
@@ -114,7 +170,8 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
 
     def _ler_json_body(self) -> dict:
         """Lê e desserializa o corpo da requisição JSON."""
-        content_length = int(self.headers.get("Content-Length", 0))
+        cl = self.headers.get("Content-Length") or self.headers.get("content-length") or 0
+        content_length = int(cl)
         if content_length == 0:
             return {}
         raw = self.rfile.read(content_length).decode("utf-8")
@@ -125,9 +182,7 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
 
     def do_GET(self):
         """Trata requisições GET para API e para arquivos estáticos."""
-        parsed_url = urllib.parse.urlparse(self.path)
-        path = parsed_url.path
-        query = urllib.parse.parse_qs(parsed_url.query)
+        path, query = self._obter_caminho_e_query()
 
         # Rota de verificação de sessão: GET /api/auth/me
         if path == "/api/auth/me":
@@ -164,13 +219,12 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
                 except RecursoNaoEncontradoException as e:
                     return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
 
-        # Servir Frontend estático (index.html, styles.css, app.js)
+        # Servir Frontend estático (index.html, styles.css, app.js) se arquivo existir
         return super().do_GET()
 
     def do_POST(self):
         """Trata requisições POST para autenticação e criação de colaboradores."""
-        parsed_url = urllib.parse.urlparse(self.path)
-        path = parsed_url.path
+        path, _ = self._obter_caminho_e_query()
 
         # Rota pública: Login POST /api/auth/login
         if path == "/api/auth/login":
@@ -237,12 +291,11 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             except Exception as e:
                 return self._enviar_json(500, {"sucesso": False, "mensagem": f"Erro interno: {str(e)}"})
 
-        return self._enviar_json(404, {"sucesso": False, "mensagem": "Rota não encontrada."})
+        return self._enviar_json(404, {"sucesso": False, "mensagem": f"Rota não encontrada: {path}"})
 
     def do_PUT(self):
         """Trata atualização completa PUT /api/colaboradores/<id>."""
-        parsed_url = urllib.parse.urlparse(self.path)
-        path = parsed_url.path
+        path, _ = self._obter_caminho_e_query()
         partes = path.strip("/").split("/")
 
         if len(partes) == 3 and partes[1] == "colaboradores" and partes[2].isdigit():
@@ -270,12 +323,11 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             except Exception as e:
                 return self._enviar_json(500, {"sucesso": False, "mensagem": f"Erro interno: {str(e)}"})
 
-        return self._enviar_json(404, {"sucesso": False, "mensagem": "Rota não encontrada."})
+        return self._enviar_json(404, {"sucesso": False, "mensagem": f"Rota não encontrada: {path}"})
 
     def do_PATCH(self):
         """Trata inativação e reativação: PATCH /api/colaboradores/<id>/inativar ou /reativar."""
-        parsed_url = urllib.parse.urlparse(self.path)
-        path = parsed_url.path
+        path, _ = self._obter_caminho_e_query()
         partes = path.strip("/").split("/")
 
         if len(partes) == 4 and partes[1] == "colaboradores" and partes[2].isdigit():
@@ -308,7 +360,7 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             except Exception as e:
                 return self._enviar_json(500, {"sucesso": False, "mensagem": f"Erro interno: {str(e)}"})
 
-        return self._enviar_json(404, {"sucesso": False, "mensagem": "Rota não encontrada."})
+        return self._enviar_json(404, {"sucesso": False, "mensagem": f"Rota não encontrada: {path}"})
 
 def run_server(port: int = PORT, db_path: str = None):
     """Inicia o servidor HTTP."""

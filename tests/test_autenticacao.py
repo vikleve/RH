@@ -370,5 +370,133 @@ class TestAutenticacaoSeguranca(unittest.TestCase):
         self.assertTrue(verificar_senha(senha, hash2, salt2))
         self.assertFalse(verificar_senha("SenhaInvalida", hash1, salt1))
 
+    # =========================================================================
+    # Novos Critérios de Aceite: CA-LOGIN-11 a CA-LOGIN-17
+    # =========================================================================
+    def test_ca_login_11_servico_disponivel(self):
+        """CA-LOGIN-11: Rota de autenticação existe, aceita POST e processa requisições."""
+        status, dados, _ = self._req("POST", "/api/auth/login", {
+            "identificador": "admin.dp@empresa.com.br",
+            "senha": "Admin@RH2026!"
+        })
+        self.assertEqual(status, 200)
+        self.assertIn("token", dados)
+        self.assertIn("usuario", dados)
+
+    def test_ca_login_12_login_valido_e_sessao(self):
+        """CA-LOGIN-12: Login válido concede sessão funcional para acessar funcionalidades."""
+        status, dados, cookies = self._req("POST", "/api/auth/login", {
+            "identificador": "admin.dp@empresa.com.br",
+            "senha": "Admin@RH2026!"
+        })
+        self.assertEqual(status, 200)
+        token = dados["token"]
+
+        # Acessa endpoint protegido
+        status_colab, lista_colab, _ = self._req("GET", "/api/colaboradores", token=token)
+        self.assertEqual(status_colab, 200)
+        self.assertIn("dados", lista_colab)
+        self.assertIsInstance(lista_colab["dados"], list)
+
+    def test_ca_login_13_credenciais_invalidas_sem_vazar_detalhes(self):
+        """CA-LOGIN-13: Credenciais erradas são rejeitadas sem expor segredos ou enumeração de usuários."""
+        status, dados, _ = self._req("POST", "/api/auth/login", {
+            "identificador": "usuario.inexistente@empresa.com.br",
+            "senha": "SenhaErradaQualquer"
+        })
+        self.assertEqual(status, 401)
+        self.assertFalse(dados.get("sucesso", True))
+        self.assertIn("mensagem", dados)
+        self.assertNotIn("hash", json.dumps(dados).lower())
+        self.assertNotIn("salt", json.dumps(dados).lower())
+
+    def test_ca_login_14_backend_indisponivel_mantem_acesso_bloqueado(self):
+        """CA-LOGIN-14: Sem backend acessível ou token falso, o acesso a dados protegidos é bloqueado."""
+        status, dados, _ = self._req("GET", "/api/colaboradores", token="token-invalido-ou-falso-999")
+        self.assertEqual(status, 401)
+        self.assertFalse(dados.get("sucesso", True))
+        self.assertEqual(dados.get("codigo"), "NAO_AUTENTICADO")
+
+    def test_ca_login_15_ambiente_serverless_vercel(self):
+        """CA-LOGIN-15: Handler serverless funciona sem self.server (ambiente Vercel lambda)."""
+        from io import BytesIO
+
+        class MockServerlessHandler(ApiColaboradorHandler):
+            def __init__(self, method, path, body_dict=None):
+                self.server = None  # Simula ambiente Vercel Serverless
+                self.command = method
+                self.path = path
+                self.requestline = f"{method} {path} HTTP/1.1"
+                self.request_version = "HTTP/1.1"
+                self.protocol_version = "HTTP/1.1"
+                self.close_connection = True
+                body_bytes = json.dumps(body_dict).encode("utf-8") if body_dict else b""
+                self.rfile = BytesIO(body_bytes)
+                self.wfile = BytesIO()
+                self.headers = {
+                    "content-length": str(len(body_bytes)),
+                    "content-type": "application/json",
+                    "x-forwarded-uri": path
+                }
+
+            def log_message(self, format, *args):
+                pass
+
+        handler = MockServerlessHandler("POST", "/api/auth/login", {
+            "identificador": "admin.dp@empresa.com.br",
+            "senha": "Admin@RH2026!"
+        })
+        handler.do_POST()
+        response_data = handler.wfile.getvalue().decode("utf-8")
+        self.assertIn("200 OK", response_data)
+        self.assertIn("token", response_data)
+
+    def test_ca_login_16_persistencia_contas_demo(self):
+        """CA-LOGIN-16: Conta de demonstração persiste e pode ser consultada após nova conexão."""
+        novo_auth_service = AuthService(db_path=self.temp_db_path)
+        usuario, sessao = novo_auth_service.autenticar("admin.dp@empresa.com.br", "Admin@RH2026!")
+        self.assertIsNotNone(usuario)
+        self.assertEqual(usuario["usuario"], "admin.dp")
+
+    def test_ca_login_17_regressao_colaboradores(self):
+        """CA-LOGIN-17: Operações do Cadastro de Colaboradores continuam funcionando sob sessão válida."""
+        # 1. Login
+        _, dados, _ = self._req("POST", "/api/auth/login", {
+            "identificador": "admin.dp@empresa.com.br",
+            "senha": "Admin@RH2026!"
+        })
+        token = dados["token"]
+
+        # 2. Criar colaborador com CPF e matrícula válidos
+        novo = {
+            "matricula": "RH-8899",
+            "nome_completo": "Regressao Teste",
+            "cpf": "85328103068",
+            "rg": "77.888.999-0",
+            "data_nascimento": "1991-07-20",
+            "telefone": "(11) 97777-8888",
+            "email": "regressao.teste@empresa.com.br",
+            "logradouro": "Rua Teste",
+            "numero": "77",
+            "bairro": "Bairro",
+            "cidade": "São Paulo",
+            "uf": "SP",
+            "cep": "01001-000",
+            "data_admissao": "2023-01-10",
+            "cargo": "Assistente de RH",
+            "setor": "Recursos Humanos",
+            "salario_base": 3200.00,
+            "situacao": "ativo",
+            "dependentes": []
+        }
+        status_create, resp_create, _ = self._req("POST", "/api/colaboradores", novo, token=token)
+        self.assertEqual(status_create, 201)
+        cid = resp_create["dados"]["id"]
+
+        # 3. Consultar
+        status_get, resp_get, _ = self._req("GET", f"/api/colaboradores/{cid}", token=token)
+        self.assertEqual(status_get, 200)
+        self.assertEqual(resp_get["dados"]["matricula"], "RH-8899")
+
 if __name__ == "__main__":
     unittest.main()

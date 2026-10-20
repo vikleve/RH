@@ -19,7 +19,22 @@ const Estado = {
   usaApi: window.location.protocol.startsWith('http')
 };
 
-const API_BASE = '/api';
+function getApiBase() {
+  if (typeof window !== 'undefined' && window.location) {
+    const { protocol, hostname, port } = window.location;
+    // Se acessado via file://
+    if (protocol === 'file:') {
+      return 'http://127.0.0.1:8000/api';
+    }
+    // Se acessado localmente em outra porta dev (ex: Live Server 5500, Vite 5173, etc.)
+    if ((hostname === 'localhost' || hostname === '127.0.0.1') && port && port !== '8000') {
+      return 'http://127.0.0.1:8000/api';
+    }
+  }
+  return '/api';
+}
+
+const API_BASE = getApiBase();
 
 function getAuthHeaders() {
   const headers = { 'Content-Type': 'application/json' };
@@ -299,9 +314,14 @@ const AuthManager = {
         body: JSON.stringify({ identificador, senha })
       });
 
-      const data = await resp.json();
+      let data = null;
+      try {
+        data = await resp.json();
+      } catch (parseError) {
+        console.warn('A resposta do servidor não é um JSON válido:', resp.status, parseError);
+      }
 
-      if (resp.ok && data.sucesso) {
+      if (resp.ok && data && data.sucesso) {
         this.token = data.token;
         this.usuario = data.usuario;
         Estado.token = data.token;
@@ -312,12 +332,22 @@ const AuthManager = {
         this.exibirTelaSistema(data.usuario);
         exibirToast(`Autenticado como ${data.usuario.nome_completo}`, 'success');
         await carregarColaboradores();
+      } else if (data && data.mensagem) {
+        if (alertaMsg) alertaMsg.textContent = data.mensagem;
+        if (alerta) alerta.classList.remove('hidden');
+      } else if (resp.status === 404) {
+        if (alertaMsg) alertaMsg.textContent = 'Serviço de autenticação não encontrado (HTTP 404). Verifique se o backend está ativo.';
+        if (alerta) alerta.classList.remove('hidden');
+      } else if (resp.status >= 500) {
+        if (alertaMsg) alertaMsg.textContent = `Erro interno no servidor de autenticação (HTTP ${resp.status}). Tente novamente mais tarde.`;
+        if (alerta) alerta.classList.remove('hidden');
       } else {
-        if (alertaMsg) alertaMsg.textContent = data.mensagem || 'Credenciais inválidas.';
+        if (alertaMsg) alertaMsg.textContent = 'Falha na autenticação. Verifique os dados informados.';
         if (alerta) alerta.classList.remove('hidden');
       }
     } catch (e) {
-      if (alertaMsg) alertaMsg.textContent = 'Serviço de autenticação temporariamente indisponível. Tente novamente.';
+      console.error('Falha de conexão com o serviço de autenticação:', e);
+      if (alertaMsg) alertaMsg.textContent = 'Serviço de autenticação temporariamente indisponível. Verifique se o servidor backend está rodando.';
       if (alerta) alerta.classList.remove('hidden');
     } finally {
       if (btnEntrar) btnEntrar.disabled = false;

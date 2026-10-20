@@ -9,7 +9,7 @@ import hmac
 import secrets
 import os
 from datetime import datetime, timedelta
-from .database import get_connection
+from .database import get_connection, init_db
 
 ITERATIONS = 100_000
 SESSION_DURATION_HOURS = 12
@@ -41,8 +41,11 @@ def verificar_senha(senha: str, senha_hash: str, salt: str) -> bool:
     return hmac.compare_digest(hash_calculado, senha_hash)
 
 class AuthService:
-    def __init__(self, db_path: str = None):
+    def __init__(self, db_path: str = None, auto_init: bool = True):
         self.db_path = db_path
+        if auto_init:
+            init_db(self.db_path, auto_provision=False)
+            self.provisionar_usuario_inicial()
 
     def provisionar_usuario_inicial(self) -> dict:
         """
