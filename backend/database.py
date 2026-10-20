@@ -121,7 +121,12 @@ def init_db(db_path: str = None, auto_provision: bool = True):
 
     # Provisionar conta padrão de administrador se ainda não existir
     if auto_provision:
-        from .auth import AuthService
+        try:
+            from .auth import AuthService
+        except ImportError:
+            import sys
+            sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+            from backend.auth import AuthService
         auth_service = AuthService(db_path=db_path, auto_init=False)
         auth_service.provisionar_usuario_inicial()
 

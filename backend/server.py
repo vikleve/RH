@@ -10,8 +10,14 @@ import socketserver
 import json
 import os
 import urllib.parse
-from .service import ColaboradorService, ValidacaoException, RecursoNaoEncontradoException
-from .auth import AuthService, CredenciaisInvalidasException
+try:
+    from .service import ColaboradorService, ValidacaoException, RecursoNaoEncontradoException
+    from .auth import AuthService, CredenciaisInvalidasException
+except ImportError:
+    import sys
+    sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+    from backend.service import ColaboradorService, ValidacaoException, RecursoNaoEncontradoException
+    from backend.auth import AuthService, CredenciaisInvalidasException
 
 PORT = 8000
 FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend"))
