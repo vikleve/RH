@@ -346,7 +346,7 @@ class TestAutenticacaoSeguranca(unittest.TestCase):
             config = json.load(f)
             self.assertIn("rewrites", config)
             destinos = [r["destination"] for r in config["rewrites"]]
-            self.assertIn("/api/index.py", destinos)
+            self.assertTrue(any(d.startswith("/api/index.py") for d in destinos))
 
         api_index_path = os.path.join(raiz, "api", "index.py")
         self.assertTrue(os.path.exists(api_index_path), "Handler api/index.py deve existir.")

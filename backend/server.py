@@ -72,21 +72,24 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
         )
         parsed = urllib.parse.urlparse(raw_uri)
         path = parsed.path
+        query = urllib.parse.parse_qs(parsed.query)
 
-        # Se o path resolvido for o script do handler (ex: /api/index.py ou /api/index),
-        # extrai a subrota dos cabeçalhos da Vercel
-        if path in ("/api/index.py", "/api/index", "/api"):
+        # 1. Se houver parâmetro path na query (injetado por rewrite vercel: ?path=auth/login)
+        if "path" in query:
+            subpath = query["path"][0]
+            path = f"/api/{subpath}" if not subpath.startswith("/") else subpath
+
+        # 2. Remove sufixo .py caso o script seja invocado diretamente pela Vercel (ex: /api/auth/login.py)
+        if path.endswith(".py"):
+            path = path[:-3]
+
+        # 3. Caso ainda seja /api/index ou /api, verificar route-matches legados
+        if path in ("/api/index", "/api"):
             route_matches = self.headers.get("x-now-route-matches", "")
             if "1=" in route_matches:
                 subroute = route_matches.split("1=")[-1].split("&")[0]
                 path = f"/api/{subroute}"
-            elif parsed.query:
-                q_dict = urllib.parse.parse_qs(parsed.query)
-                if "path" in q_dict:
-                    subpath = q_dict["path"][0]
-                    path = f"/api/{subpath}" if not subpath.startswith("/") else subpath
 
-        query = urllib.parse.parse_qs(parsed.query)
         return path, query
 
     def _extrair_token_sessao(self) -> str | None:
