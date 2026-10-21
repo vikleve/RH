@@ -1,5 +1,6 @@
 {
   "version": 2,
+<<<<<<< HEAD
   "routes": [
     {
       "src": "/api/auth/login",
@@ -32,6 +33,16 @@
     {
       "src": "/(.*)",
       "dest": "/frontend/$1"
+=======
+  "rewrites": [
+    {
+      "source": "/api/:path*",
+      "destination": "/api/index.py?path=:path*"
+    },
+    {
+      "source": "/(.*)",
+      "destination": "/frontend/$1"
+>>>>>>> 1b107d34a0af54a29890a2b91eddfabdfa32f458
     }
   ]
 }
