@@ -1,6 +1,5 @@
 {
   "version": 2,
-<<<<<<< HEAD
   "routes": [
     {
       "src": "/api/auth/login",
@@ -31,18 +30,12 @@
       "dest": "/api/colaboradores.py"
     },
     {
-      "src": "/(.*)",
-      "dest": "/frontend/$1"
-=======
-  "rewrites": [
-    {
-      "source": "/api/:path*",
-      "destination": "/api/index.py?path=:path*"
+      "src": "/api/(.*)",
+      "dest": "/api/index.py"
     },
     {
-      "source": "/(.*)",
-      "destination": "/frontend/$1"
->>>>>>> 1b107d34a0af54a29890a2b91eddfabdfa32f458
+      "src": "/(.*)",
+      "dest": "/frontend/$1"
     }
   ]
 }
