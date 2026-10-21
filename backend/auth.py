@@ -84,12 +84,11 @@ class AuthService:
         P = self._ph()
         conn = self._conn()
         cursor = conn.cursor()
-        cursor.execute("SELECT COUNT(*) FROM usuarios;")
-        row = cursor.fetchone()
-        # Compativel com sqlite3.Row e psycopg2 tuple
-        total = row[0] if isinstance(row[0], int) else int(list(row)[0])
+        
+        cursor.execute(f"SELECT id, email, usuario, nome_completo, perfil, status FROM usuarios WHERE email = {P} OR usuario = {P}", ("admin.dp@empresa.com.br", "admin.dp"))
+        admin_existente = cursor.fetchone()
 
-        if total == 0:
+        if not admin_existente:
             senha_inicial = os.environ.get("ADMIN_INITIAL_PASSWORD", "Admin@RH2026!")
             salt = secrets.token_hex(16)
             senha_hash, _ = hash_senha(senha_inicial, salt)
@@ -123,8 +122,6 @@ class AuthService:
             conn.commit()
 
             if self._pg():
-                # new_id ja eh o row do RETURNING; fetchone foi chamado dentro
-                # Buscar o usuario criado
                 cursor.execute(
                     "SELECT id, email, usuario, nome_completo, perfil, status FROM usuarios WHERE id = %s",
                     (new_id,)
@@ -140,7 +137,7 @@ class AuthService:
             return user
 
         conn.close()
-        return {}
+        return self._row(cursor, admin_existente) if admin_existente else {}
 
     # ──────────────────────────────────────────────────────────
     # Autenticacao
