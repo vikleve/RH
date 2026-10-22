@@ -13,14 +13,46 @@ import sqlite3
 from datetime import datetime
 
 # ─────────────────────────────────────────────────────────────────────────────
-# Configuracao
+# Configuracao de Ambiente e Drivers
 # ─────────────────────────────────────────────────────────────────────────────
-DATABASE_URL = os.environ.get("DATABASE_URL", "")
+try:
+    from dotenv import load_dotenv
+    _env_file = os.path.join(os.path.dirname(__file__), "..", ".env")
+    if os.path.exists(_env_file):
+        load_dotenv(_env_file)
+except ImportError:
+    pass
 
 _SQLITE_PATH = os.environ.get(
     "DB_PATH",
     os.path.join(os.path.dirname(__file__), "..", "colaboradores.db")
 )
+
+
+def get_database_url() -> str:
+    """
+    Retorna a URL do banco PostgreSQL a partir das variaveis de ambiente:
+    - DATABASE_URL (Supabase, Railway, Neon, Render, Docker, etc.)
+    - POSTGRES_URL / POSTGRES_PRISMA_URL (integracao nativa da Vercel)
+    - Variaveis individuais PGHOST, PGDATABASE, PGUSER, PGPASSWORD
+    """
+    url = (
+        os.environ.get("DATABASE_URL")
+        or os.environ.get("POSTGRES_URL")
+        or os.environ.get("POSTGRES_PRISMA_URL")
+        or os.environ.get("POSTGRES_URL_NON_POOLING")
+        or ""
+    ).strip()
+    
+    if not url and os.environ.get("PGHOST") and os.environ.get("PGDATABASE"):
+        user = os.environ.get("PGUSER", "postgres")
+        pwd = os.environ.get("PGPASSWORD", "")
+        host = os.environ.get("PGHOST", "localhost")
+        port = os.environ.get("PGPORT", "5432")
+        db = os.environ.get("PGDATABASE", "rh_db")
+        url = f"postgresql://{user}:{pwd}@{host}:{port}/{db}"
+    return url
+
 
 # ─────────────────────────────────────────────────────────────────────────────
 # Deteccao do modo
@@ -29,22 +61,32 @@ _SQLITE_PATH = os.environ.get(
 def _usar_postgres(db_path: str = None) -> bool:
     """
     Retorna True se devemos usar PostgreSQL.
-    Se db_path for fornecido explicitamente, usa SQLite com esse caminho.
+    Se db_path for fornecido explicitamente, usa SQLite com esse caminho (ex: testes).
     """
     if db_path:
-        return False  # caminho explicito => sempre SQLite (ex: testes isolados)
-    return bool(DATABASE_URL and DATABASE_URL.strip())
+        return False
+    return bool(get_database_url())
 
 
 def _get_pg_conn():
-    """Retorna conexao psycopg2 para PostgreSQL."""
+    """Retorna conexao psycopg2 para PostgreSQL com tratamento de DSN e SSL."""
     try:
         import psycopg2
     except ImportError:
         raise ImportError(
             "psycopg2-binary nao encontrado. Execute: pip install psycopg2-binary"
         )
-    dsn = DATABASE_URL.replace("postgres://", "postgresql://", 1)
+    url = get_database_url()
+    dsn = url.replace("postgres://", "postgresql://", 1)
+    
+    # Se for servico em nuvem (Neon, Supabase, Railway, Render) e nao especificar sslmode, garante sslmode=require
+    if (
+        "localhost" not in dsn
+        and "127.0.0.1" not in dsn
+        and "sslmode=" not in dsn
+    ):
+        dsn += ("&" if "?" in dsn else "?") + "sslmode=require"
+        
     return psycopg2.connect(dsn)
 
 
