@@ -30,6 +30,10 @@
       "dest": "/api/colaboradores.py"
     },
     {
+      "src": "/api/(.*)",
+      "dest": "/api/index.py"
+    },
+    {
       "src": "/(.*)",
       "dest": "/frontend/$1"
     }

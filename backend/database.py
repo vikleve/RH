@@ -10,6 +10,7 @@ Os testes passam db_path explicito => sempre SQLite isolado.
 """
 import os
 import sqlite3
+import tempfile
 from datetime import datetime
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -25,7 +26,8 @@ except ImportError:
 
 _SQLITE_PATH = os.environ.get(
     "DB_PATH",
-    os.path.join(os.path.dirname(__file__), "..", "colaboradores.db")
+    os.path.join(tempfile.gettempdir(), "colaboradores.db") if os.environ.get("VERCEL")
+    else os.path.join(os.path.dirname(__file__), "..", "colaboradores.db")
 )
 
 
