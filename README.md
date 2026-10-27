@@ -78,12 +78,18 @@ cadastro-colaboradores/
 
 Por motivos de segurança e conformidade, a conta inicial de demonstração é provisionada automaticamente no banco de dados na primeira inicialização, utilizando hash com salt criptográfico:
 
+### Conta de Administrador:
 - **E-mail / Usuário:** `admin.dp@empresa.com.br` ou `admin.dp`
 - **Senha Inicial:** `Admin@RH2026!`
 - **Perfil:** `administrador`
 
+### Conta de Convidado / Visitante:
+- **E-mail / Usuário:** `visitante@empresa.com.br` ou `visitante`
+- **Senha Inicial:** `Visitante@RH2026!`
+- **Perfil:** `analista_rh`
+
 > [!NOTE]
-> Para alterar a senha inicial no ambiente de produção, configure a variável de ambiente `ADMIN_INITIAL_PASSWORD`.
+> Para alterar as senhas iniciais no ambiente de produção, configure as variáveis de ambiente `ADMIN_INITIAL_PASSWORD` e `GUEST_INITIAL_PASSWORD`.
 
 ---
 

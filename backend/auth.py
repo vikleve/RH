@@ -78,13 +78,14 @@ class AuthService:
 
     def provisionar_usuario_inicial(self) -> dict:
         """
-        Provisiona a conta de administrador inicial caso nao exista nenhum
-        usuario no banco de dados.
+        Provisiona as contas padrão de administrador e visitante/convidado
+        caso ainda não existam no banco de dados.
         """
         P = self._ph()
         conn = self._conn()
         cursor = conn.cursor()
         
+        # 1. Provisionar Administrador se não existir
         cursor.execute(f"SELECT id, email, usuario, nome_completo, perfil, status FROM usuarios WHERE email = {P} OR usuario = {P}", ("admin.dp@empresa.com.br", "admin.dp"))
         admin_existente = cursor.fetchone()
 
@@ -118,26 +119,51 @@ class AuthService:
                 ) VALUES (?,?,?,?,?,?,'ativo',?)
             """
 
-            new_id = insert_returning_id(cursor, conn, sql_pg, sql_sqlite, params, self.db_path)
+            insert_returning_id(cursor, conn, sql_pg, sql_sqlite, params, self.db_path)
             conn.commit()
 
-            if self._pg():
-                cursor.execute(
-                    "SELECT id, email, usuario, nome_completo, perfil, status FROM usuarios WHERE id = %s",
-                    (new_id,)
-                )
-            else:
-                cursor.execute(
-                    "SELECT id, email, usuario, nome_completo, perfil, status FROM usuarios WHERE id = ?",
-                    (new_id,)
-                )
-            row = cursor.fetchone()
-            user = self._row(cursor, row)
-            conn.close()
-            return user
+        # 2. Provisionar Convidado / Visitante se não existir
+        cursor.execute(f"SELECT id, email, usuario, nome_completo, perfil, status FROM usuarios WHERE email = {P} OR usuario = {P}", ("visitante@empresa.com.br", "visitante"))
+        convidado_existente = cursor.fetchone()
 
+        if not convidado_existente:
+            senha_convidado = os.environ.get("GUEST_INITIAL_PASSWORD", "Visitante@RH2026!")
+            salt = secrets.token_hex(16)
+            senha_hash, _ = hash_senha(senha_convidado, salt)
+            agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+            params = (
+                "visitante@empresa.com.br",
+                "visitante",
+                "Convidado (Analista RH)",
+                senha_hash,
+                salt,
+                "analista_rh",
+                agora,
+            )
+
+            sql_pg = """
+                INSERT INTO usuarios (
+                    email, usuario, nome_completo,
+                    senha_hash, salt, perfil, status, criado_em
+                ) VALUES (%s,%s,%s,%s,%s,%s,'ativo',%s)
+                RETURNING id, email, usuario, nome_completo, perfil, status
+            """
+            sql_sqlite = """
+                INSERT INTO usuarios (
+                    email, usuario, nome_completo,
+                    senha_hash, salt, perfil, status, criado_em
+                ) VALUES (?,?,?,?,?,?,'ativo',?)
+            """
+
+            insert_returning_id(cursor, conn, sql_pg, sql_sqlite, params, self.db_path)
+            conn.commit()
+
+        cursor.execute(f"SELECT id, email, usuario, nome_completo, perfil, status FROM usuarios WHERE email = {P} OR usuario = {P}", ("admin.dp@empresa.com.br", "admin.dp"))
+        row_admin = cursor.fetchone()
+        user = self._row(cursor, row_admin) if row_admin else {}
         conn.close()
-        return self._row(cursor, admin_existente) if admin_existente else {}
+        return user
 
     # ──────────────────────────────────────────────────────────
     # Autenticacao
