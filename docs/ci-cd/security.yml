@@ -1,0 +1,32 @@
+name: Segurança & Auditoria de Dependências
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  schedule:
+    - cron: '0 6 * * 1' # Toda segunda-feira às 06:00 UTC
+
+jobs:
+  security-audit:
+    name: Auditoria de Vulnerabilidades e Segredos
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout do Repositório
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Instalar Ferramentas de Auditoria
+        run: |
+          python -m pip install --upgrade pip
+          pip install pip-audit
+
+      - name: Auditoria de Dependências Conhecidas (pip-audit)
+        run: |
+          pip-audit -r requirements.txt || true

@@ -1,0 +1,50 @@
+name: CI — Pipeline de Governança e Qualidade
+
+on:
+  push:
+    branches: [ "main", "develop", "release/*" ]
+  pull_request:
+    branches: [ "main" ]
+
+jobs:
+  test-and-lint:
+    name: Testes Automatizados & Análise Estática
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.11", "3.12"]
+
+    steps:
+      - name: Checkout do Repositório
+        uses: actions/checkout@v4
+
+      - name: Configurar Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+
+      - name: Instalar Dependências
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          pip install ruff bandit coverage
+
+      - name: Verificação de Estilo e Linting (Ruff)
+        run: |
+          ruff check .
+
+      - name: Análise Estática de Segurança (Bandit)
+        run: |
+          bandit -r backend api -c pyproject.toml
+
+      - name: Execução da Suíte Completa de Testes Automatizados (63 Testes)
+        env:
+          SKIP_SOCKET_TESTS: "0"
+        run: |
+          python tests/executar_todos_testes.py
+
+      - name: Relatório de Cobertura de Código
+        run: |
+          coverage run --source=backend tests/executar_todos_testes.py
+          coverage report -m
