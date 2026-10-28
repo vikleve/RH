@@ -236,3 +236,5 @@ O projeto possui configuração para deploy serverless na Vercel através dos ar
 - **Roteamento de API:** Requisições para `/api/*` são roteadas para a Serverless Function Python em `api/index.py`.
 - **Arquivos Estáticos:** Arquivos do frontend (`index.html`, `styles.css`, `app.js`) são servidos a partir do diretório `frontend/`.
 - **Isolamento de Banco:** Em ambientes serverless efêmeros, utiliza-se banco PostgreSQL externo via `DATABASE_URL` configurado nas variáveis de ambiente da plataforma.
+
+**Configuração obrigatória do banco persistente:** consulte o [guia de PostgreSQL na Vercel](docs/infraestrutura/POSTGRES_NA_VERCEL.md). Na Vercel, a aplicação não deve usar SQLite temporário quando nenhuma URL PostgreSQL estiver configurada.
