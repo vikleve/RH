@@ -22,6 +22,7 @@ from tests.test_colaboradores import TestModuloColaboradores
 from tests.test_folha_api import TestFolhaApi
 from tests.test_folha_calculos import TestFolhaCalculos
 from tests.test_folha_service import TestFolhaService
+from tests.test_database_config import TestDatabaseConfiguration
 
 
 def executar():
@@ -44,6 +45,9 @@ def executar():
 
     # 3. Testes de Serviço e Persistência da Folha (Módulo 2: Ciclo de Vida e Auditoria)
     suite.addTests(carregador.loadTestsFromTestCase(TestFolhaService))
+
+    # 3b. Garantias de configuracao de persistencia no ambiente serverless
+    suite.addTests(carregador.loadTestsFromTestCase(TestDatabaseConfiguration))
 
     # 4. Testes de API In-Memory da Folha (Endpoints REST protegidos)
     suite.addTests(carregador.loadTestsFromTestCase(TestFolhaApi))
