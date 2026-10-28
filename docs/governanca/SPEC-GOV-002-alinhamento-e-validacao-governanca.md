@@ -173,24 +173,19 @@ Usar estados distintos, no mínimo: **documentado**, **implementação identific
 
 Se um item depender de decisão externa, registrar o bloqueio e não declarar a spec concluída por mera substituição do status.
 
-## 7. Trello e GitHub — rastreabilidade obrigatória
+## 7. Gestão do trabalho neste momento — Trello fora de escopo
 
-Criar um cartão Trello dedicado a esta spec com o título:
+A equipe ainda aguarda orientação dos gestores sobre o uso do Trello. Portanto, **esta spec não exige criar, editar, reorganizar ou utilizar quadros/cartões do Trello**. Não criar automações, quadros, listas nem cartões enquanto essa decisão estiver pendente.
 
-**SPEC-GOV-002 — Validar governança, rastreabilidade e quality gates**
+Até nova orientação, a rastreabilidade de execução deve permanecer dentro do GitHub e dos documentos versionados:
+- manter esta spec identificada como `SPEC-GOV-002`;
+- executar mudanças em branch própria;
+- usar issue ou Pull Request com referência explícita a esta spec;
+- registrar critérios de aceitação, testes, evidências, decisões pendentes e revisão no PR/issue;
+- manter `main` sem commits diretos para as mudanças desta spec, conforme `CONTRIBUTING.md`;
+- não atribuir responsáveis por nome sem acordo prévio.
 
-O cartão deve conter:
-- link para esta spec;
-- objetivo e escopo;
-- checklist GOV-002-01 a GOV-002-07;
-- responsável de execução e revisor, a serem definidos pela equipe;
-- dependências e decisões pendentes;
-- link da issue/PR GitHub;
-- resultado de CI e evidências da RTM.
-
-Não atribuir responsáveis pelo nome sem acordo. Não reutilizar um quadro genérico como se fosse o quadro oficial do projeto sem confirmar isso com a equipe. Se ainda não existir quadro do projeto, solicitar/obter confirmação da equipe antes de criar ou reorganizar um quadro existente.
-
-No GitHub, trabalhar em branch própria e abrir PR. O título, a descrição e o cartão devem referenciar `SPEC-GOV-002`. Encerrar o cartão somente depois da revisão e dos critérios de aceitação.
+Quando os gestores decidirem se o Trello será utilizado, o fluxo poderá ser atualizado em uma revisão posterior. Essa decisão não deve bloquear as correções técnicas e documentais desta spec.
 
 ## 8. Pendências da fonte que permanecem sem decisão
 
@@ -210,6 +205,6 @@ Não implementar toda a folha, todas as integrações ou todos os requisitos RF-
 
 | Versão | Alteração | Estado |
 |---|---|---|
-| 1.0 | Spec corretiva criada após revisão dos commits de governança e comparação com o documento oficial de requisitos. | Aguardando revisão |
+| 1.0 | Spec corretiva criada após revisão dos commits de governança e comparação com o documento oficial de requisitos. | Revisão pendente |\n| 1.1 | Atualizada para suspender qualquer uso do Trello até orientação dos gestores; rastreabilidade temporária permanece no GitHub. | Aguardando revisão |
 
 **Nota:** esta spec é uma instrução de trabalho. A sua existência não comprova que qualquer item foi corrigido, que os workflows passaram, que as regras de negócio foram aprovadas ou que o sistema está pronto para uso real.
