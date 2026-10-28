@@ -12,8 +12,8 @@ Atende a RF de Cálculos Trabalhistas:
 - Totalização precisa com arredondamento monetário (ROUND_HALF_UP)
 - Memória de cálculo detalhada para conferência por profissional de RH
 """
-from decimal import Decimal, ROUND_HALF_UP
-from typing import List, Dict, Any, Optional, Tuple
+from decimal import ROUND_HALF_UP, Decimal
+from typing import Any, Dict, List, Optional, Tuple
 
 
 def _to_decimal(val: Any) -> Decimal:

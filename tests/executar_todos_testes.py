@@ -3,21 +3,26 @@ Executor Principal de Testes Automatizados (Sem abrir navegador)
 Executa a suíte completa de testes unitários, integração de API e testes de segurança da autenticação.
 Gera relatório detalhado do atendimento aos critérios funcionais (CA-01 a CA-10) e de segurança (CA-LOGIN-01 a CA-LOGIN-10).
 """
-import unittest
-import sys
 import os
+import sys
 import time
+import unittest
 
-# Configurar caminhos
+# Configurar caminhos e ambiente de teste isolado com credenciais sintéticas
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, BASE_DIR)
 
-from tests.test_colaboradores import TestModuloColaboradores
+os.environ["TESTING"] = "1"
+os.environ["ADMIN_INITIAL_PASSWORD"] = os.environ.get("ADMIN_INITIAL_PASSWORD", "Sintetico#AdminTest2026!")
+os.environ["GUEST_INITIAL_PASSWORD"] = os.environ.get("GUEST_INITIAL_PASSWORD", "Sintetico#GuestTest2026!")
+
 from tests.test_api import TestApiColaboradores
 from tests.test_autenticacao import TestAutenticacaoSeguranca
+from tests.test_colaboradores import TestModuloColaboradores
+from tests.test_folha_api import TestFolhaApi
 from tests.test_folha_calculos import TestFolhaCalculos
 from tests.test_folha_service import TestFolhaService
-from tests.test_folha_api import TestFolhaApi
+
 
 def executar():
     print("=" * 80)
@@ -33,7 +38,7 @@ def executar():
 
     # 1. Testes de Regras de Negócio e Persistência (Módulo 1: CA-01 a CA-10)
     suite.addTests(carregador.loadTestsFromTestCase(TestModuloColaboradores))
-    
+
     # 2. Testes de Cálculos da Folha de Pagamento (Módulo 2: Cálculos e Proporcionalidades)
     suite.addTests(carregador.loadTestsFromTestCase(TestFolhaCalculos))
 

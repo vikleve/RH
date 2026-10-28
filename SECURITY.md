@@ -13,7 +13,7 @@ A equipe do projeto **Portal DP & RH** trata a segurança da informação e a pr
 - **Gerenciamento Seguro de Sessões:** Tokens criptograficamente seguros de 32 bytes (64 hex), cookies `HttpOnly`, `SameSite=Lax` e `Secure` em HTTPS.
 - **Proteção de Endpoints:** Todas as rotas de API sensíveis exigem autenticação ativa; acessos anônimos recebem resposta imediata `401 Unauthorized`.
 - **Prevenção contra Enumeração de Usuários:** Mensagens neutras e genéricas para falhas de autenticação.
-- **Trilha de Auditoria:** Registro imutável de todas as alterações cadastrais e lançamentos de folha de pagamento, contendo usuário responsável, data/hora, valor anterior e novo valor.
+- **Trilha de Auditoria:** Registro rastreável em banco de dados de todas as alterações cadastrais e lançamentos de folha de pagamento, contendo usuário responsável, data/hora, valor anterior e novo valor.
 
 ---
 

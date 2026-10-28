@@ -2,9 +2,9 @@
 Handler Vercel Serverless — POST /api/auth/login
 Autentica o usuario e cria uma sessao segura.
 """
+import json
 import os
 import sys
-import json
 
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 if BASE_DIR not in sys.path:
@@ -18,6 +18,7 @@ except ImportError:
     pass
 
 from http.server import BaseHTTPRequestHandler
+
 from backend.auth import AuthService, CredenciaisInvalidasException
 
 _auth_service = None

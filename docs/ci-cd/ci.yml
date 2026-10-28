@@ -38,7 +38,7 @@ jobs:
         run: |
           bandit -r backend api -c pyproject.toml
 
-      - name: Execução da Suíte Completa de Testes Automatizados (63 Testes)
+      - name: Execução da Suíte Completa de Testes Automatizados (64 Testes)
         env:
           SKIP_SOCKET_TESTS: "0"
         run: |

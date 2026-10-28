@@ -4,13 +4,11 @@ Contem a logica de aplicacao, auditoria de alteracoes, validacoes de duplicidade
 e manipulacao de dados conforme RF-01 a RF-09 e CA-01 a CA-08.
 Funciona com PostgreSQL (producao) e SQLite (desenvolvimento local e testes).
 """
-from datetime import datetime
 import json
-from .database import (
-    get_connection, init_db, ph,
-    fetchone_dict, fetchall_dict, insert_returning_id, _usar_postgres
-)
-from .validators import validar_formulario_colaborador, normalizar_cpf
+from datetime import datetime
+
+from .database import _usar_postgres, fetchall_dict, fetchone_dict, get_connection, init_db, insert_returning_id, ph
+from .validators import normalizar_cpf, validar_formulario_colaborador
 
 CAMPOS_COMPARAVEIS = [
     ("nome_completo",   "Nome Completo"),

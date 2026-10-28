@@ -45,7 +45,7 @@ def get_database_url() -> str:
         or os.environ.get("POSTGRES_URL_NON_POOLING")
         or ""
     ).strip()
-    
+
     if not url and os.environ.get("PGHOST") and os.environ.get("PGDATABASE"):
         user = os.environ.get("PGUSER", "postgres")
         pwd = os.environ.get("PGPASSWORD", "")
@@ -80,7 +80,7 @@ def _get_pg_conn():
         )
     url = get_database_url()
     dsn = url.replace("postgres://", "postgresql://", 1)
-    
+
     # Se for servico em nuvem (Neon, Supabase, Railway, Render) e nao especificar sslmode, garante sslmode=require
     if (
         "localhost" not in dsn
@@ -88,7 +88,7 @@ def _get_pg_conn():
         and "sslmode=" not in dsn
     ):
         dsn += ("&" if "?" in dsn else "?") + "sslmode=require"
-        
+
     return psycopg2.connect(dsn)
 
 

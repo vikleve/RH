@@ -20,4 +20,4 @@ A raiz do projeto possuía uma versão defasada contendo apenas o Módulo 1 (36 
 ## Consequências
 - Fim da duplicidade e ambiguidade: a raiz é a única fonte da verdade (Single Source of Truth).
 - Repositório limpo, profissional e em conformidade estrita com as exigências acadêmicas de Governança de TI.
-- Execução de 63 testes automatizados diretamente na raiz com 100% de sucesso.
+- Execução de 64 testes automatizados diretamente na raiz com 100% de sucesso.
