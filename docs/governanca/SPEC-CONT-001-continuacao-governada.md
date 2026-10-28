@@ -29,7 +29,7 @@ Na árvore e na documentação atual do repositório são identificados:
 - Uso de SQLite para desenvolvimento/testes e suporte condicional a PostgreSQL; há script de migração e arquivos SQL de migração.
 - Arquivos e configuração para Vercel. A presença desses arquivos não significa que o deploy esteja ativo, que o banco seja durável no ambiente publicado ou que o uso real esteja aprovado.
 
-**Atenção de estrutura:** o repositório contém diretórios `RH-main/` além dos diretórios da raiz e também um arquivo ZIP. Antes de mover/apagar/mesclar conteúdo, comparar as versões e identificar qual conjunto de arquivos é a fonte atual. Não apagar diretórios, bancos ou código nesta etapa.
+**Atenção de estrutura:** o repositório historicamente continha diretórios `RH-main/` além dos diretórios da raiz e arquivos ZIP. *(Nota de Governança: Essa duplicidade foi completamente diagnosticada e saneada no commit `92c1549`, consolidando a árvore de código canônica na raiz do repositório).*
 
 **Atenção de segurança:** o README expõe credenciais de demonstração documentadas. Não usar essas credenciais em ambiente real. Verificar se credenciais ou dados reais foram versionados; remover dados sensíveis do histórico exige avaliação específica e não deve ser feito sem plano. Usar apenas dados fictícios/anônimos em testes. Credenciais iniciais devem vir de configuração segura e ser trocadas antes de qualquer ambiente compartilhado.
 

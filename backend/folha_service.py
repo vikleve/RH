@@ -5,16 +5,11 @@ auditoria histórica, ciclo de vida da folha (Rascunho -> Calculada -> Fechada)
 e integração com a camada de cálculos.
 Funciona em modo dual: PostgreSQL (produção/Supabase) e SQLite (local/testes).
 """
-import json
 from datetime import datetime
-from decimal import Decimal
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
-from .database import (
-    get_connection, init_db, ph,
-    fetchone_dict, fetchall_dict, insert_returning_id, _usar_postgres
-)
-from .folha_calculos import processar_calculo_folha, formatar_moeda
+from .database import _usar_postgres, fetchall_dict, fetchone_dict, get_connection, init_db, insert_returning_id, ph
+from .folha_calculos import processar_calculo_folha
 
 
 class FolhaValidacaoException(Exception):
@@ -64,11 +59,11 @@ class FolhaService:
 
     def obter_parametro_vigente(self) -> Dict[str, Any]:
         """Retorna os parâmetros de folha ativos vigentes."""
-        P = self._ph()
+        self._ph()
         conn = self._conn()
         cursor = conn.cursor()
         cursor.execute(
-            f"SELECT * FROM folha_parametros WHERE ativo = 1 ORDER BY id DESC LIMIT 1;"
+            "SELECT * FROM folha_parametros WHERE ativo = 1 ORDER BY id DESC LIMIT 1;"
         )
         param = self._fetchone(cursor)
         conn.close()
@@ -412,7 +407,7 @@ class FolhaService:
         cursor = conn.cursor()
 
         cursor.execute(f"""
-            SELECT 
+            SELECT
                 f.*,
                 c.nome_completo as colaborador_nome,
                 c.matricula as colaborador_matricula,
@@ -434,20 +429,20 @@ class FolhaService:
 
         # Buscar itens da folha ordenados por tipo (provento primeiro, depois desconto, depois informativo)
         cursor.execute(f"""
-            SELECT * FROM folha_itens 
+            SELECT * FROM folha_itens
             WHERE folha_id = {P}
-            ORDER BY 
-                CASE tipo 
-                    WHEN 'provento' THEN 1 
-                    WHEN 'desconto' THEN 2 
-                    ELSE 3 
+            ORDER BY
+                CASE tipo
+                    WHEN 'provento' THEN 1
+                    WHEN 'desconto' THEN 2
+                    ELSE 3
                 END, codigo_evento ASC;
         """, (folha_id,))
         folha["itens"] = self._fetchall(cursor)
 
         # Buscar histórico de auditoria
         cursor.execute(f"""
-            SELECT * FROM folha_historico 
+            SELECT * FROM folha_historico
             WHERE folha_id = {P}
             ORDER BY id ASC;
         """, (folha_id,))
@@ -470,7 +465,7 @@ class FolhaService:
         cursor = conn.cursor()
 
         sql = """
-            SELECT 
+            SELECT
                 f.id,
                 f.colaborador_id,
                 f.competencia,
@@ -570,7 +565,7 @@ class FolhaService:
         if not motivo or len(motivo.strip()) < 5:
             raise FolhaValidacaoException({"motivo": "Informe um motivo detalhado para reabertura da folha."})
 
-        folha = self.obter_folha_por_id(folha_id)
+        self.obter_folha_por_id(folha_id)
         P = self._ph()
         conn = self._conn()
         cursor = conn.cursor()

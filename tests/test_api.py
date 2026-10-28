@@ -3,34 +3,38 @@ Testes de Integração de API HTTP — Módulo 1 & Autenticação
 Execução 100% automatizada em código (sem abrir navegador).
 Valida contratos de endpoints REST, serialização JSON, proteção por token/cookie e códigos HTTP.
 """
-import unittest
-import threading
-import socketserver
-import tempfile
-import os
-import sys
 import json
-import urllib.request
+import os
+import socketserver
+import sys
+import tempfile
+import threading
+import unittest
 import urllib.error
+import urllib.request
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+from backend.auth import AuthService
 from backend.server import ApiColaboradorHandler
 from backend.service import ColaboradorService
-from backend.auth import AuthService
+
 
 class TestApiColaboradores(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        os.environ["TESTING"] = "1"
+        os.environ["ADMIN_INITIAL_PASSWORD"] = "Sintetico#AdminTest2026!"
+        cls.admin_senha = "Sintetico#AdminTest2026!"
         cls.temp_db_fd, cls.temp_db_path = tempfile.mkstemp(suffix=".db")
         os.close(cls.temp_db_fd)
-        
+
         cls.server = socketserver.TCPServer(("127.0.0.1", 0), ApiColaboradorHandler)
         cls.server.colab_service = ColaboradorService(db_path=cls.temp_db_path)
         cls.server.auth_service = AuthService(db_path=cls.temp_db_path)
         cls.port = cls.server.server_address[1]
         cls.base_url = f"http://127.0.0.1:{cls.port}"
-        
+
         cls.server_thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
         cls.server_thread.start()
 
@@ -54,7 +58,7 @@ class TestApiColaboradores(unittest.TestCase):
             req.add_header("Authorization", f"Bearer {token}")
         if cookie:
             req.add_header("Cookie", cookie)
-        
+
         try:
             with urllib.request.urlopen(req) as resp:
                 status = resp.status
@@ -85,7 +89,7 @@ class TestApiColaboradores(unittest.TestCase):
         # 1. Login com credenciais válidas
         status, resp, set_cookie = self._fazer_requisicao("POST", "/api/auth/login", {
             "identificador": "admin.dp@empresa.com.br",
-            "senha": "Admin@RH2026!"
+            "senha": "Sintetico#AdminTest2026!"
         })
         self.assertEqual(status, 200)
         self.assertTrue(resp["sucesso"])

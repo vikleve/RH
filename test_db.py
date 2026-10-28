@@ -2,15 +2,15 @@
 Script de Diagnóstico e Teste de Conexão com o Banco de Dados — RH/DP
 Execução: python test_db.py
 """
-import sys
 import os
+import sys
 
 # Adiciona o diretorio base
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
-from backend.database import get_connection, init_db, _usar_postgres, get_database_url
+from backend.database import _usar_postgres, get_connection, get_database_url, init_db
 
 
 def testar_banco():
@@ -20,7 +20,7 @@ def testar_banco():
 
     usando_pg = _usar_postgres()
     modo = "PostgreSQL (Produção / Nuvem / Concorrente)" if usando_pg else "SQLite (Local / Desenvolvimento / Testes)"
-    
+
     print(f"Modo detectado: {modo}")
     if usando_pg:
         db_url = get_database_url()

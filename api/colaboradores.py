@@ -10,10 +10,10 @@ Rotas atendidas (via vercel.json):
   PATCH /api/colaboradores/<id>/inativar
   PATCH /api/colaboradores/<id>/reativar
 """
+import http.cookies
+import json
 import os
 import sys
-import json
-import http.cookies
 import urllib.parse
 
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
@@ -27,8 +27,9 @@ except ImportError:
     pass
 
 from http.server import BaseHTTPRequestHandler
+
 from backend.auth import AuthService
-from backend.service import ColaboradorService, ValidacaoException, RecursoNaoEncontradoException
+from backend.service import ColaboradorService, RecursoNaoEncontradoException, ValidacaoException
 
 _auth_service = None
 _colab_service = None

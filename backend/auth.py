@@ -7,13 +7,12 @@ Funciona com PostgreSQL (producao) e SQLite (desenvolvimento local e testes).
 """
 import hashlib
 import hmac
-import secrets
 import os
+import secrets
+import sys
 from datetime import datetime, timedelta
-from .database import (
-    get_connection, init_db, ph,
-    fetchone_dict, row_to_dict, insert_returning_id, _usar_postgres
-)
+
+from .database import _usar_postgres, get_connection, init_db, insert_returning_id, ph, row_to_dict
 
 ITERATIONS = 100_000
 SESSION_DURATION_HOURS = 12
@@ -73,24 +72,42 @@ class AuthService:
         return row_to_dict(cursor, row, self.db_path)
 
     # ──────────────────────────────────────────────────────────
-    # Provisionamento
+    # Provisionamento Seguro (GOV-002-02)
     # ──────────────────────────────────────────────────────────
 
     def provisionar_usuario_inicial(self) -> dict:
         """
         Provisiona as contas padrão de administrador e visitante/convidado
         caso ainda não existam no banco de dados.
+        Exige ADMIN_INITIAL_PASSWORD explícita para prevenir senhas padrão em produção.
         """
         P = self._ph()
         conn = self._conn()
         cursor = conn.cursor()
-        
+
         # 1. Provisionar Administrador se não existir
         cursor.execute(f"SELECT id, email, usuario, nome_completo, perfil, status FROM usuarios WHERE email = {P} OR usuario = {P}", ("admin.dp@empresa.com.br", "admin.dp"))
         admin_existente = cursor.fetchone()
 
+        # Determinar se a execução ocorre em contexto de testes automatizados
+        em_ambiente_teste = os.environ.get("TESTING") == "1" or (
+            "unittest" in sys.modules and os.environ.get("TESTING") != "0"
+        )
+
         if not admin_existente:
-            senha_inicial = os.environ.get("ADMIN_INITIAL_PASSWORD", "Admin@RH2026!")
+            senha_inicial = os.environ.get("ADMIN_INITIAL_PASSWORD")
+            if not senha_inicial:
+                # Permitir credencial sintética apenas em ambiente explícito de testes automatizados
+                if em_ambiente_teste:
+                    senha_inicial = os.environ.get("TEST_ADMIN_PASSWORD", "Sintetico#AdminTest2026!")
+                else:
+                    conn.close()
+                    raise RuntimeError(
+                        "Falha de segurança operacional: A variável de ambiente ADMIN_INITIAL_PASSWORD "
+                        "não foi configurada. É obrigatório definir uma senha inicial forte no arquivo .env "
+                        "ou nas variáveis de ambiente antes da inicialização do Portal DP & RH em ambientes reais ou compartilhados."
+                    )
+
             salt = secrets.token_hex(16)
             senha_hash, _ = hash_senha(senha_inicial, salt)
             agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
@@ -122,42 +139,46 @@ class AuthService:
             insert_returning_id(cursor, conn, sql_pg, sql_sqlite, params, self.db_path)
             conn.commit()
 
-        # 2. Provisionar Convidado / Visitante se não existir
+        # 2. Provisionar Convidado / Visitante se não existir e se configurado
         cursor.execute(f"SELECT id, email, usuario, nome_completo, perfil, status FROM usuarios WHERE email = {P} OR usuario = {P}", ("visitante@empresa.com.br", "visitante"))
         convidado_existente = cursor.fetchone()
 
         if not convidado_existente:
-            senha_convidado = os.environ.get("GUEST_INITIAL_PASSWORD", "Visitante@RH2026!")
-            salt = secrets.token_hex(16)
-            senha_hash, _ = hash_senha(senha_convidado, salt)
-            agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            senha_convidado = os.environ.get("GUEST_INITIAL_PASSWORD")
+            if not senha_convidado and em_ambiente_teste:
+                senha_convidado = os.environ.get("TEST_GUEST_PASSWORD", "Sintetico#GuestTest2026!")
 
-            params = (
-                "visitante@empresa.com.br",
-                "visitante",
-                "Convidado (Analista RH)",
-                senha_hash,
-                salt,
-                "analista_rh",
-                agora,
-            )
+            if senha_convidado:
+                salt = secrets.token_hex(16)
+                senha_hash, _ = hash_senha(senha_convidado, salt)
+                agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
 
-            sql_pg = """
-                INSERT INTO usuarios (
-                    email, usuario, nome_completo,
-                    senha_hash, salt, perfil, status, criado_em
-                ) VALUES (%s,%s,%s,%s,%s,%s,'ativo',%s)
-                RETURNING id, email, usuario, nome_completo, perfil, status
-            """
-            sql_sqlite = """
-                INSERT INTO usuarios (
-                    email, usuario, nome_completo,
-                    senha_hash, salt, perfil, status, criado_em
-                ) VALUES (?,?,?,?,?,?,'ativo',?)
-            """
+                params = (
+                    "visitante@empresa.com.br",
+                    "visitante",
+                    "Convidado (Analista RH)",
+                    senha_hash,
+                    salt,
+                    "analista_rh",
+                    agora,
+                )
 
-            insert_returning_id(cursor, conn, sql_pg, sql_sqlite, params, self.db_path)
-            conn.commit()
+                sql_pg = """
+                    INSERT INTO usuarios (
+                        email, usuario, nome_completo,
+                        senha_hash, salt, perfil, status, criado_em
+                    ) VALUES (%s,%s,%s,%s,%s,%s,'ativo',%s)
+                    RETURNING id, email, usuario, nome_completo, perfil, status
+                """
+                sql_sqlite = """
+                    INSERT INTO usuarios (
+                        email, usuario, nome_completo,
+                        senha_hash, salt, perfil, status, criado_em
+                    ) VALUES (?,?,?,?,?,?,'ativo',?)
+                """
+
+                insert_returning_id(cursor, conn, sql_pg, sql_sqlite, params, self.db_path)
+                conn.commit()
 
         cursor.execute(f"SELECT id, email, usuario, nome_completo, perfil, status FROM usuarios WHERE email = {P} OR usuario = {P}", ("admin.dp@empresa.com.br", "admin.dp"))
         row_admin = cursor.fetchone()
@@ -207,9 +228,9 @@ class AuthService:
             raise CredenciaisInvalidasException("Identificador ou senha incorretos.")
 
         token = secrets.token_hex(32)
-        agora_dt  = datetime.now()
+        agora_dt = datetime.now()
         expira_dt = agora_dt + timedelta(hours=SESSION_DURATION_HOURS)
-        agora_str  = agora_dt.strftime("%Y-%m-%d %H:%M:%S")
+        agora_str = agora_dt.strftime("%Y-%m-%d %H:%M:%S")
         expira_str = expira_dt.strftime("%Y-%m-%d %H:%M:%S")
 
         cursor.execute(f"""

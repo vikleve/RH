@@ -11,9 +11,7 @@ if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
 from backend.server import ApiColaboradorHandler
-from backend.service import ColaboradorService
-from backend.auth import AuthService
-from backend.folha_service import FolhaService
+
 
 class handler(ApiColaboradorHandler):
     """Handler serverless compatível com a especificação da Vercel."""

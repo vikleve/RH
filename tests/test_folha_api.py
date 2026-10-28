@@ -10,19 +10,19 @@ Testa endpoints REST sem dependência de socket de rede (execução 100% in-memo
 - POST /api/folha/<id>/reabrir (Reabertura com justificativa)
 - DELETE /api/folha/<id> (Cancelamento)
 """
-import unittest
-import tempfile
-import os
-import sys
 import io
 import json
+import os
+import sys
+import tempfile
+import unittest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from backend.server import ApiColaboradorHandler
-from backend.service import ColaboradorService
 from backend.auth import AuthService
 from backend.folha_service import FolhaService
+from backend.server import ApiColaboradorHandler
+from backend.service import ColaboradorService
 
 
 class FakeSocket:
@@ -49,13 +49,16 @@ class MockServer:
 class TestFolhaApi(unittest.TestCase):
 
     def setUp(self):
+        os.environ["TESTING"] = "1"
+        os.environ["ADMIN_INITIAL_PASSWORD"] = "Sintetico#AdminTest2026!"
+        self.admin_senha = "Sintetico#AdminTest2026!"
         self.temp_db_fd, self.temp_db_path = tempfile.mkstemp(suffix=".db")
         os.close(self.temp_db_fd)
 
         self.server = MockServer(self.temp_db_path)
 
         # Autentica e gera token
-        self.admin_user, self.token = self.server.auth_service.autenticar("admin.dp@empresa.com.br", "Admin@RH2026!")
+        self.admin_user, self.token = self.server.auth_service.autenticar("admin.dp@empresa.com.br", "Sintetico#AdminTest2026!")
 
         # Cadastra colaborador
         self.colaborador = self.server.colab_service.cadastrar({
@@ -95,7 +98,7 @@ class TestFolhaApi(unittest.TestCase):
         raw_req = "\r\n".join(headers_lines).encode("utf-8") + b"\r\n\r\n" + body_bytes
         sock = FakeSocket(raw_req)
 
-        handler = ApiColaboradorHandler(sock, ("127.0.0.1", 12345), self.server)
+        ApiColaboradorHandler(sock, ("127.0.0.1", 12345), self.server)
         resp_data = sock.wfile.getvalue()
 
         # Parse status e body

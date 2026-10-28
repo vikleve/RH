@@ -19,7 +19,7 @@ Adotar uma arquitetura de banco de dados relacional **Dual-Mode**:
 
 ## Consequências
 - **Positivas:**
-  - Zero atrito para novos desenvolvedores e para a execução dos 63 testes automatizados headless.
+  - Zero atrito para novos desenvolvedores e para a execução dos 64 testes automatizados headless.
   - Compatibilidade com deploys na nuvem sem perder integridade referencial nem segurança de concorrência.
   - Rastreabilidade de evolução de schema através de migrações SQL formais.
 - **Mitigações:**

@@ -3,17 +3,19 @@ Testes Automatizados da Camada de Serviço de Folha de Pagamento
 Testa persistência relacional, validação de duplicidade, auditoria histórica,
 cálculos integrados e ciclo de vida da folha (Rascunho -> Calculada -> Fechada -> Reaberta).
 """
-import unittest
-import tempfile
 import os
 import sys
+import tempfile
+import unittest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
-from backend.service import ColaboradorService
 from backend.folha_service import (
-    FolhaService, FolhaValidacaoException, FolhaBloqueadaException, FolhaNaoEncontradaException
+    FolhaBloqueadaException,
+    FolhaService,
+    FolhaValidacaoException,
 )
+from backend.service import ColaboradorService
 
 
 class TestFolhaService(unittest.TestCase):

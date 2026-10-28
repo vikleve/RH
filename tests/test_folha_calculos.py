@@ -13,26 +13,25 @@ Testa isoladamente cada função matemática e regra de negócio:
 - Bloqueio de rubricas duplicadas
 - Totalizadores: Salário Líquido = Proventos - Descontos
 """
-import unittest
-from decimal import Decimal
 import os
 import sys
+import unittest
+from decimal import Decimal
 
 # Adiciona o diretório base
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from backend.folha_calculos import (
-    calcular_salario_proporcional,
-    calcular_valor_hora_normal,
-    calcular_horas_extras,
     calcular_adicional_noturno,
-    calcular_desconto_faltas,
     calcular_desconto_atrasos,
+    calcular_desconto_faltas,
     calcular_dsr_sobre_variaveis,
+    calcular_horas_extras,
     calcular_inss_progressivo,
     calcular_irrf_progressivo,
+    calcular_salario_proporcional,
+    calcular_valor_hora_normal,
     processar_calculo_folha,
-    arredondar_moeda
 )
 
 

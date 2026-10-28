@@ -3,24 +3,24 @@ Testes Automatizados de Segurança e Autenticação — Portal DP & RH
 Valida os critérios de aceitação CA-LOGIN-01 a CA-LOGIN-10 e requisitos RF-40, RF-41, RF-43.
 Execução 100% em código (headless / sem abrir navegador).
 """
-import unittest
-import threading
-import socketserver
-import tempfile
-import os
-import sys
 import json
-import urllib.request
+import os
+import socketserver
+import sys
+import tempfile
+import threading
+import unittest
 import urllib.error
-import re
+import urllib.request
 from datetime import datetime, timedelta
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+from backend.auth import AuthService, hash_senha, verificar_senha
+from backend.database import get_connection
 from backend.server import ApiColaboradorHandler
 from backend.service import ColaboradorService
-from backend.auth import AuthService, hash_senha, verificar_senha, CredenciaisInvalidasException
-from backend.database import get_connection
+
 
 class TestAutenticacaoSeguranca(unittest.TestCase):
     @classmethod
@@ -28,14 +28,14 @@ class TestAutenticacaoSeguranca(unittest.TestCase):
         # Cria banco de dados temporário isolado
         cls.temp_db_fd, cls.temp_db_path = tempfile.mkstemp(suffix=".db")
         os.close(cls.temp_db_fd)
-        
+
         # Iniciar servidor HTTP em porta efêmera livre
         cls.server = socketserver.TCPServer(("127.0.0.1", 0), ApiColaboradorHandler)
         cls.server.colab_service = ColaboradorService(db_path=cls.temp_db_path)
         cls.server.auth_service = AuthService(db_path=cls.temp_db_path)
         cls.port = cls.server.server_address[1]
         cls.base_url = f"http://127.0.0.1:{cls.port}"
-        
+
         cls.server_thread = threading.Thread(target=cls.server.serve_forever, daemon=True)
         cls.server_thread.start()
 
@@ -59,7 +59,7 @@ class TestAutenticacaoSeguranca(unittest.TestCase):
             req.add_header("Authorization", f"Bearer {token}")
         if cookie:
             req.add_header("Cookie", cookie)
-            
+
         try:
             with urllib.request.urlopen(req) as resp:
                 status = resp.status
@@ -137,14 +137,14 @@ class TestAutenticacaoSeguranca(unittest.TestCase):
         # Login com e-mail
         status, resp, set_cookie = self._req("POST", "/api/auth/login", {
             "identificador": "admin.dp@empresa.com.br",
-            "senha": "Admin@RH2026!"
+            "senha": "Sintetico#AdminTest2026!"
         })
         self.assertEqual(status, 200)
         self.assertTrue(resp["sucesso"])
         self.assertIn("token", resp)
         token = resp["token"]
         self.assertTrue(len(token) >= 32)
-        
+
         # Validação do perfil e dos dados retornados
         user = resp["usuario"]
         self.assertEqual(user["perfil"], "administrador")
@@ -155,7 +155,7 @@ class TestAutenticacaoSeguranca(unittest.TestCase):
         # Login também com nome de usuário
         status_user, resp_user, _ = self._req("POST", "/api/auth/login", {
             "identificador": "admin.dp",
-            "senha": "Admin@RH2026!"
+            "senha": "Sintetico#AdminTest2026!"
         })
         self.assertEqual(status_user, 200)
         self.assertTrue(resp_user["sucesso"])
@@ -168,7 +168,7 @@ class TestAutenticacaoSeguranca(unittest.TestCase):
         # 1. Autenticar
         _, resp_login, _ = self._req("POST", "/api/auth/login", {
             "identificador": "admin.dp",
-            "senha": "Admin@RH2026!"
+            "senha": "Sintetico#AdminTest2026!"
         })
         token = resp_login["token"]
 
@@ -200,10 +200,10 @@ class TestAutenticacaoSeguranca(unittest.TestCase):
         # Cadastrar colaborador usando autenticação
         _, resp_login, _ = self._req("POST", "/api/auth/login", {
             "identificador": "admin.dp",
-            "senha": "Admin@RH2026!"
+            "senha": "Sintetico#AdminTest2026!"
         })
         token = resp_login["token"]
-        
+
         payload = {
             "matricula": "RH-9988",
             "nome_completo": "Carlos Eduardo Confidential",
@@ -234,7 +234,7 @@ class TestAutenticacaoSeguranca(unittest.TestCase):
         # 1. Login
         _, resp_login, _ = self._req("POST", "/api/auth/login", {
             "identificador": "admin.dp",
-            "senha": "Admin@RH2026!"
+            "senha": "Sintetico#AdminTest2026!"
         })
         token = resp_login["token"]
 
@@ -261,7 +261,7 @@ class TestAutenticacaoSeguranca(unittest.TestCase):
         """CA-LOGIN-08: As operações existentes do Módulo 1 continuam 100% funcionais sob autenticação."""
         _, resp_login, _ = self._req("POST", "/api/auth/login", {
             "identificador": "admin.dp",
-            "senha": "Admin@RH2026!"
+            "senha": "Sintetico#AdminTest2026!"
         })
         token = resp_login["token"]
 
@@ -394,7 +394,7 @@ class TestAutenticacaoSeguranca(unittest.TestCase):
         """CA-LOGIN-11: Rota de autenticação existe, aceita POST e processa requisições."""
         status, dados, _ = self._req("POST", "/api/auth/login", {
             "identificador": "admin.dp@empresa.com.br",
-            "senha": "Admin@RH2026!"
+            "senha": "Sintetico#AdminTest2026!"
         })
         self.assertEqual(status, 200)
         self.assertIn("token", dados)
@@ -404,7 +404,7 @@ class TestAutenticacaoSeguranca(unittest.TestCase):
         """CA-LOGIN-12: Login válido concede sessão funcional para acessar funcionalidades."""
         status, dados, cookies = self._req("POST", "/api/auth/login", {
             "identificador": "admin.dp@empresa.com.br",
-            "senha": "Admin@RH2026!"
+            "senha": "Sintetico#AdminTest2026!"
         })
         self.assertEqual(status, 200)
         token = dados["token"]
@@ -439,8 +439,9 @@ class TestAutenticacaoSeguranca(unittest.TestCase):
         from io import BytesIO
 
         class MockServerlessHandler(ApiColaboradorHandler):
-            def __init__(self, method, path, body_dict=None):
+            def __init__(self, method, path, body_dict=None, auth_service=None):
                 self.server = None  # Simula ambiente Vercel Serverless
+                self._local_auth_service = auth_service
                 self.command = method
                 self.path = path
                 self.requestline = f"{method} {path} HTTP/1.1"
@@ -461,8 +462,8 @@ class TestAutenticacaoSeguranca(unittest.TestCase):
 
         handler = MockServerlessHandler("POST", "/api/auth/login", {
             "identificador": "admin.dp@empresa.com.br",
-            "senha": "Admin@RH2026!"
-        })
+            "senha": "Sintetico#AdminTest2026!"
+        }, auth_service=self.server.auth_service)
         handler.do_POST()
         response_data = handler.wfile.getvalue().decode("utf-8")
         self.assertIn("200 OK", response_data)
@@ -471,7 +472,7 @@ class TestAutenticacaoSeguranca(unittest.TestCase):
     def test_ca_login_16_persistencia_contas_demo(self):
         """CA-LOGIN-16: Conta de demonstração persiste e pode ser consultada após nova conexão."""
         novo_auth_service = AuthService(db_path=self.temp_db_path)
-        usuario, sessao = novo_auth_service.autenticar("admin.dp@empresa.com.br", "Admin@RH2026!")
+        usuario, sessao = novo_auth_service.autenticar("admin.dp@empresa.com.br", "Sintetico#AdminTest2026!")
         self.assertIsNotNone(usuario)
         self.assertEqual(usuario["usuario"], "admin.dp")
 
@@ -480,7 +481,7 @@ class TestAutenticacaoSeguranca(unittest.TestCase):
         # 1. Login
         _, dados, _ = self._req("POST", "/api/auth/login", {
             "identificador": "admin.dp@empresa.com.br",
-            "senha": "Admin@RH2026!"
+            "senha": "Sintetico#AdminTest2026!"
         })
         token = dados["token"]
 
@@ -514,6 +515,39 @@ class TestAutenticacaoSeguranca(unittest.TestCase):
         status_get, resp_get, _ = self._req("GET", f"/api/colaboradores/{cid}", token=token)
         self.assertEqual(status_get, 200)
         self.assertEqual(resp_get["dados"]["matricula"], "RH-8899")
+
+
+    def test_gov_002_02_bloqueio_inicializacao_sem_senha_segura(self):
+        """GOV-002-02: Inicialização falha sem ADMIN_INITIAL_PASSWORD em ambiente compartilhado ou real."""
+        import tempfile
+
+        temp_fd, temp_path = tempfile.mkstemp(suffix=".db")
+        os.close(temp_fd)
+
+        old_testing = os.environ.get("TESTING")
+        old_pw = os.environ.get("ADMIN_INITIAL_PASSWORD")
+
+        # Simula ambiente real/compartilhado desligando o flag de teste
+        os.environ["TESTING"] = "0"
+        if "ADMIN_INITIAL_PASSWORD" in os.environ:
+            del os.environ["ADMIN_INITIAL_PASSWORD"]
+
+        try:
+            with self.assertRaises(RuntimeError) as ctx:
+                AuthService(db_path=temp_path)
+            self.assertIn("ADMIN_INITIAL_PASSWORD", str(ctx.exception))
+        finally:
+            if old_testing is not None:
+                os.environ["TESTING"] = old_testing
+            else:
+                os.environ.pop("TESTING", None)
+            if old_pw is not None:
+                os.environ["ADMIN_INITIAL_PASSWORD"] = old_pw
+            if os.path.exists(temp_path):
+                try:
+                    os.remove(temp_path)
+                except PermissionError:
+                    pass
 
 if __name__ == "__main__":
     unittest.main()

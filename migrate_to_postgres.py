@@ -4,16 +4,14 @@ Copia todos os dados de colaboradores.db para o PostgreSQL configurado no .env /
 Execução: python migrate_to_postgres.py
 """
 import os
-import sys
 import sqlite3
+import sys
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 if BASE_DIR not in sys.path:
     sys.path.insert(0, BASE_DIR)
 
-from backend.database import (
-    get_database_url, _get_pg_conn, init_db, _SQLITE_PATH
-)
+from backend.database import _SQLITE_PATH, _get_pg_conn, get_database_url, init_db
 
 
 def migrar():

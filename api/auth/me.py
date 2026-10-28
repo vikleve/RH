@@ -2,10 +2,10 @@
 Handler Vercel Serverless — GET /api/auth/me
 Valida o token de sessao e retorna os dados do usuario autenticado.
 """
+import http.cookies
+import json
 import os
 import sys
-import json
-import http.cookies
 
 BASE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "../.."))
 if BASE_DIR not in sys.path:
@@ -18,6 +18,7 @@ except ImportError:
     pass
 
 from http.server import BaseHTTPRequestHandler
+
 from backend.auth import AuthService
 
 _auth_service = None

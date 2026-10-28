@@ -4,11 +4,11 @@ Atende aos requisitos de autenticação real (RF-40, RF-41, RF-43, RNF-01 a RNF-
 persistência durável e controle de acesso a endpoints protegidos.
 Executa de forma autônoma (localmente) e como Handler Serverless (Vercel).
 """
-import http.server
 import http.cookies
-import socketserver
+import http.server
 import json
 import os
+import socketserver
 import urllib.parse
 
 # Carrega variaveis de ambiente do arquivo .env (se existir)
@@ -19,19 +19,25 @@ try:
 except ImportError:
     pass  # python-dotenv nao instalado; variaveis devem ser definidas manualmente
 try:
-    from .service import ColaboradorService, ValidacaoException, RecursoNaoEncontradoException
     from .auth import AuthService, CredenciaisInvalidasException
     from .folha_service import (
-        FolhaService, FolhaValidacaoException, FolhaNaoEncontradaException, FolhaBloqueadaException
+        FolhaBloqueadaException,
+        FolhaNaoEncontradaException,
+        FolhaService,
+        FolhaValidacaoException,
     )
+    from .service import ColaboradorService, RecursoNaoEncontradoException, ValidacaoException
 except ImportError:
     import sys
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
-    from backend.service import ColaboradorService, ValidacaoException, RecursoNaoEncontradoException
     from backend.auth import AuthService, CredenciaisInvalidasException
     from backend.folha_service import (
-        FolhaService, FolhaValidacaoException, FolhaNaoEncontradaException, FolhaBloqueadaException
+        FolhaBloqueadaException,
+        FolhaNaoEncontradaException,
+        FolhaService,
+        FolhaValidacaoException,
     )
+    from backend.service import ColaboradorService, RecursoNaoEncontradoException, ValidacaoException
 
 PORT = 8000
 FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend"))
@@ -56,7 +62,7 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             if not hasattr(self.server, "colab_service"):
                 self.server.colab_service = ColaboradorService()
             return self.server.colab_service
-        
+
         if getattr(self, "_local_colab_service", None) is None:
             global _global_colab_service
             if _global_colab_service is None:
@@ -181,7 +187,7 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
         self.send_response(status_code)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(corpo)))
-        
+
         origem = self.headers.get("Origin", "*")
         self.send_header("Access-Control-Allow-Origin", origem)
         self.send_header("Access-Control-Allow-Credentials", "true")
@@ -189,14 +195,14 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")
-        
+
         if set_cookie:
             proto = self.headers.get("X-Forwarded-Proto", "")
             secure_flag = "; Secure" if proto == "https" else ""
             self.send_header("Set-Cookie", f"{set_cookie}; Path=/; HttpOnly; SameSite=Lax{secure_flag}")
         if delete_cookie:
             self.send_header("Set-Cookie", f"{delete_cookie}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax")
-            
+
         self.end_headers()
         self.wfile.write(corpo)
 
@@ -334,7 +340,7 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
                 dados = self._ler_json_body()
                 identificador = dados.get("identificador", "").strip()
                 senha = dados.get("senha", "")
-                
+
                 if not identificador or not senha:
                     return self._enviar_json(400, {
                         "sucesso": False,
@@ -418,7 +424,7 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             try:
                 dados = self._ler_json_body()
                 nome_responsavel = f"{usuario_auth['nome_completo']} ({usuario_auth['perfil']})"
-                
+
                 colab_id = dados.get("colaborador_id")
                 competencia = dados.get("competencia", "").strip()
                 if not colab_id or not competencia:
