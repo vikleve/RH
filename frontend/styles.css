@@ -1197,3 +1197,379 @@ body {
   .dependente-row { grid-template-columns: 1fr; }
   .login-card { padding: 2rem 1.25rem; }
 }
+
+/* ==========================================================================
+   MÓDULO DE FOLHA DE PAGAMENTO — ABAS DE NAVEGAÇÃO E ESTILOS
+   ========================================================================== */
+
+.nav-modules {
+  display: flex;
+  gap: 0.5rem;
+  background-color: var(--bg-card);
+  border-bottom: 2px solid var(--border-color);
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 1.5rem;
+}
+
+.nav-module-tab {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.9rem 1.25rem;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-weight: 600;
+  font-size: 0.95rem;
+  cursor: pointer;
+  border-bottom: 3px solid transparent;
+  margin-bottom: -2px;
+  transition: var(--transition);
+}
+
+.nav-module-tab:hover {
+  color: var(--primary);
+  background-color: var(--primary-light);
+}
+
+.nav-module-tab.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+  background-color: transparent;
+}
+
+.badge-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.65rem;
+  border-radius: var(--radius-full);
+  font-size: 0.75rem;
+  font-weight: 600;
+  text-transform: capitalize;
+}
+
+.badge-calculada {
+  background-color: #dbeafe;
+  color: #1e40af;
+  border: 1px solid #bfdbfe;
+}
+
+.badge-fechada {
+  background-color: #dcfce7;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+}
+
+.badge-rascunho {
+  background-color: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fde68a;
+}
+
+.badge-cancelada {
+  background-color: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fecaca;
+}
+
+/* Eventos da Folha no Modal */
+.eventos-box {
+  background-color: var(--bg-app);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 1.25rem;
+  margin-bottom: 1.25rem;
+}
+
+.eventos-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.rubricas-table-wrapper {
+  margin-top: 1rem;
+  background: #ffffff;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-sm);
+  overflow-x: auto;
+}
+
+.rubricas-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+.rubricas-table th, .rubricas-table td {
+  padding: 0.5rem 0.75rem;
+  border-bottom: 1px solid var(--border-color);
+  text-align: left;
+}
+
+.rubricas-table th {
+  background-color: var(--bg-subtle);
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+/* Prévia da Folha */
+.folha-preview-bar {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 0.75rem;
+  background: linear-gradient(135deg, #1e3a8a, #1d4ed8);
+  color: #ffffff;
+  padding: 1rem 1.25rem;
+  border-radius: var(--radius-md);
+  margin-top: 1rem;
+}
+
+.folha-preview-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.folha-preview-label {
+  font-size: 0.75rem;
+  opacity: 0.85;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.folha-preview-value {
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+
+/* ==========================================================================
+   DEMONSTRATIVO / HOLERITE PROFISSIONAL
+   ========================================================================== */
+.holerite-modal-card {
+  max-width: 900px !important;
+}
+
+.holerite-container {
+  background: #ffffff;
+  border: 2px solid #334155;
+  border-radius: 4px;
+  padding: 1.5rem;
+  font-family: 'Courier New', Courier, monospace, 'Inter', sans-serif;
+  color: #0f172a;
+}
+
+.holerite-header {
+  border-bottom: 2px solid #334155;
+  padding-bottom: 0.75rem;
+  margin-bottom: 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.holerite-empresa-titulo {
+  font-size: 1.1rem;
+  font-weight: 700;
+  text-transform: uppercase;
+}
+
+.holerite-recibo-badge {
+  text-align: right;
+  font-weight: 700;
+  font-size: 0.95rem;
+}
+
+.holerite-colaborador-box {
+  background: #f8fafc;
+  border: 1px solid #cbd5e1;
+  padding: 0.75rem 1rem;
+  margin-bottom: 1rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 0.5rem;
+  font-size: 0.85rem;
+}
+
+.holerite-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  margin-bottom: 1rem;
+}
+
+.holerite-table th {
+  background: #f1f5f9;
+  border-top: 1px solid #334155;
+  border-bottom: 1px solid #334155;
+  padding: 0.5rem;
+  text-align: left;
+  font-weight: 700;
+}
+
+.holerite-table td {
+  padding: 0.45rem 0.5rem;
+  border-bottom: 1px dashed #e2e8f0;
+}
+
+.holerite-totais-box {
+  border-top: 2px solid #334155;
+  border-bottom: 2px solid #334155;
+  padding: 0.75rem 0.5rem;
+  margin-bottom: 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.holerite-total-item {
+  display: flex;
+  flex-direction: column;
+}
+
+.holerite-total-label {
+  font-size: 0.75rem;
+  color: #64748b;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.holerite-total-val {
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.holerite-liquido-destaque {
+  background: #ecfdf5;
+  border: 2px solid #10b981;
+  padding: 0.5rem 1rem;
+  border-radius: var(--radius-sm);
+  text-align: right;
+}
+
+.holerite-liquido-destaque .holerite-total-val {
+  color: #047857;
+  font-size: 1.35rem;
+}
+
+.holerite-bases-rodape {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  padding: 0.5rem 0.75rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+  gap: 0.5rem;
+  font-size: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.holerite-assinatura {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  color: #475569;
+}
+
+.linha-assinatura {
+  width: 250px;
+  border-top: 1px solid #334155;
+  text-align: center;
+  padding-top: 0.35rem;
+}
+
+/* Memória de Cálculo Expansível */
+.memoria-box {
+  margin-top: 1.5rem;
+  background: #f8fafc;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  padding: 1rem;
+}
+
+.memoria-titulo {
+  font-weight: 600;
+  font-size: 0.9rem;
+  color: var(--primary);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  cursor: pointer;
+}
+
+.memoria-conteudo {
+  margin-top: 0.75rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.memoria-linha {
+  padding: 0.35rem 0.5rem;
+  background: #ffffff;
+  border-radius: 4px;
+  border-left: 3px solid var(--primary);
+  font-family: monospace;
+}
+
+/* ==========================================================================
+   ESTILOS DE IMPRESSÃO OFICIAL (@media print)
+   ========================================================================== */
+@media print {
+  body * {
+    visibility: hidden;
+  }
+  
+  .modal-overlay {
+    position: static !important;
+    background: transparent !important;
+    padding: 0 !important;
+    display: block !important;
+  }
+
+  .modal-card {
+    box-shadow: none !important;
+    border: none !important;
+    width: 100% !important;
+    max-width: 100% !important;
+  }
+
+  .modal-header, .modal-footer, .app-header, .nav-modules, .filters-card, .table-card, .metrics-grid, .memoria-box, .btn {
+    display: none !important;
+  }
+
+  #modal-holerite, #modal-holerite * {
+    visibility: visible;
+  }
+
+  #modal-holerite {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+  }
+
+  .holerite-container {
+    border: 2px solid #000000 !important;
+    padding: 1.5cm 1cm !important;
+    width: 100% !important;
+  }
+
+  .holerite-liquido-destaque {
+    border: 2px solid #000000 !important;
+    background: #ffffff !important;
+  }
+  
+  .holerite-liquido-destaque .holerite-total-val {
+    color: #000000 !important;
+  }
+}

@@ -238,6 +238,161 @@ _DDL_SESSOES = """
     );
 """
 
+_DDL_FOLHA_PARAMETROS_PG = """
+    CREATE TABLE IF NOT EXISTS folha_parametros (
+        id                          SERIAL PRIMARY KEY,
+        codigo                      TEXT UNIQUE NOT NULL,
+        descricao                   TEXT NOT NULL,
+        vigencia_inicio             TEXT NOT NULL,
+        vigencia_fim                TEXT,
+        horas_mensais_padrao        NUMERIC(6,2) NOT NULL DEFAULT 220.00,
+        dias_mes_padrao             INTEGER NOT NULL DEFAULT 30,
+        percentual_he_padrao        NUMERIC(5,2) NOT NULL DEFAULT 50.00,
+        percentual_he_extra         NUMERIC(5,2) NOT NULL DEFAULT 100.00,
+        percentual_adicional_noturno NUMERIC(5,2) NOT NULL DEFAULT 20.00,
+        aplicar_reducao_noturna     INTEGER NOT NULL DEFAULT 0,
+        fator_reducao_noturna       NUMERIC(8,6) NOT NULL DEFAULT 1.142857,
+        aplicar_inss                INTEGER NOT NULL DEFAULT 1,
+        aplicar_irrf                INTEGER NOT NULL DEFAULT 1,
+        aliquota_fgts               NUMERIC(5,2) NOT NULL DEFAULT 8.00,
+        teto_inss                   NUMERIC(15,2) NOT NULL DEFAULT 8157.41,
+        deducao_dependente_irrf     NUMERIC(15,2) NOT NULL DEFAULT 189.59,
+        ativo                       INTEGER NOT NULL DEFAULT 1,
+        validado_por_profissional   INTEGER NOT NULL DEFAULT 0,
+        criado_em                   TEXT NOT NULL,
+        atualizado_em               TEXT NOT NULL
+    );
+"""
+
+_DDL_FOLHA_PARAMETROS_SQLITE = """
+    CREATE TABLE IF NOT EXISTS folha_parametros (
+        id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+        codigo                      TEXT UNIQUE NOT NULL,
+        descricao                   TEXT NOT NULL,
+        vigencia_inicio             TEXT NOT NULL,
+        vigencia_fim                TEXT,
+        horas_mensais_padrao        REAL NOT NULL DEFAULT 220.00,
+        dias_mes_padrao             INTEGER NOT NULL DEFAULT 30,
+        percentual_he_padrao        REAL NOT NULL DEFAULT 50.00,
+        percentual_he_extra         REAL NOT NULL DEFAULT 100.00,
+        percentual_adicional_noturno REAL NOT NULL DEFAULT 20.00,
+        aplicar_reducao_noturna     INTEGER NOT NULL DEFAULT 0,
+        fator_reducao_noturna       REAL NOT NULL DEFAULT 1.142857,
+        aplicar_inss                INTEGER NOT NULL DEFAULT 1,
+        aplicar_irrf                INTEGER NOT NULL DEFAULT 1,
+        aliquota_fgts               REAL NOT NULL DEFAULT 8.00,
+        teto_inss                   REAL NOT NULL DEFAULT 8157.41,
+        deducao_dependente_irrf     REAL NOT NULL DEFAULT 189.59,
+        ativo                       INTEGER NOT NULL DEFAULT 1,
+        validado_por_profissional   INTEGER NOT NULL DEFAULT 0,
+        criado_em                   TEXT NOT NULL,
+        atualizado_em               TEXT NOT NULL
+    );
+"""
+
+_DDL_FOLHAS_PAGAMENTO_PG = """
+    CREATE TABLE IF NOT EXISTS folhas_pagamento (
+        id                          SERIAL PRIMARY KEY,
+        colaborador_id              INTEGER NOT NULL
+                                    REFERENCES colaboradores(id) ON DELETE RESTRICT,
+        competencia                 TEXT NOT NULL,
+        periodo_inicio              TEXT NOT NULL,
+        periodo_fim                 TEXT NOT NULL,
+        data_pagamento              TEXT,
+        dias_trabalhados            NUMERIC(4,1) NOT NULL DEFAULT 30.0,
+        dias_mes                    INTEGER NOT NULL DEFAULT 30,
+        horas_mensais_divisor       NUMERIC(6,2) NOT NULL DEFAULT 220.00,
+        salario_base_contratual     NUMERIC(15,2) NOT NULL,
+        salario_base_proporcional   NUMERIC(15,2) NOT NULL,
+        total_proventos             NUMERIC(15,2) NOT NULL DEFAULT 0.00,
+        total_descontos             NUMERIC(15,2) NOT NULL DEFAULT 0.00,
+        salario_liquido             NUMERIC(15,2) NOT NULL DEFAULT 0.00,
+        base_inss                   NUMERIC(15,2) NOT NULL DEFAULT 0.00,
+        base_fgts                   NUMERIC(15,2) NOT NULL DEFAULT 0.00,
+        valor_fgts_informativo      NUMERIC(15,2) NOT NULL DEFAULT 0.00,
+        base_irrf                   NUMERIC(15,2) NOT NULL DEFAULT 0.00,
+        situacao                    TEXT NOT NULL DEFAULT 'rascunho'
+                                    CHECK (situacao IN ('rascunho', 'calculada', 'fechada', 'cancelada')),
+        observacoes                 TEXT,
+        parametro_id                INTEGER REFERENCES folha_parametros(id),
+        criado_por                  TEXT NOT NULL,
+        criado_em                   TEXT NOT NULL,
+        atualizado_por              TEXT,
+        atualizado_em               TEXT,
+        fechado_por                 TEXT,
+        fechado_em                  TEXT,
+        CONSTRAINT unq_colab_competencia UNIQUE (colaborador_id, competencia)
+    );
+"""
+
+_DDL_FOLHAS_PAGAMENTO_SQLITE = """
+    CREATE TABLE IF NOT EXISTS folhas_pagamento (
+        id                          INTEGER PRIMARY KEY AUTOINCREMENT,
+        colaborador_id              INTEGER NOT NULL
+                                    REFERENCES colaboradores(id) ON DELETE RESTRICT,
+        competencia                 TEXT NOT NULL,
+        periodo_inicio              TEXT NOT NULL,
+        periodo_fim                 TEXT NOT NULL,
+        data_pagamento              TEXT,
+        dias_trabalhados            REAL NOT NULL DEFAULT 30.0,
+        dias_mes                    INTEGER NOT NULL DEFAULT 30,
+        horas_mensais_divisor       REAL NOT NULL DEFAULT 220.00,
+        salario_base_contratual     REAL NOT NULL,
+        salario_base_proporcional   REAL NOT NULL,
+        total_proventos             REAL NOT NULL DEFAULT 0.00,
+        total_descontos             REAL NOT NULL DEFAULT 0.00,
+        salario_liquido             REAL NOT NULL DEFAULT 0.00,
+        base_inss                   REAL NOT NULL DEFAULT 0.00,
+        base_fgts                   REAL NOT NULL DEFAULT 0.00,
+        valor_fgts_informativo      REAL NOT NULL DEFAULT 0.00,
+        base_irrf                   REAL NOT NULL DEFAULT 0.00,
+        situacao                    TEXT NOT NULL DEFAULT 'rascunho'
+                                    CHECK (situacao IN ('rascunho', 'calculada', 'fechada', 'cancelada')),
+        observacoes                 TEXT,
+        parametro_id                INTEGER REFERENCES folha_parametros(id),
+        criado_por                  TEXT NOT NULL,
+        criado_em                   TEXT NOT NULL,
+        atualizado_por              TEXT,
+        atualizado_em               TEXT,
+        fechado_por                 TEXT,
+        fechado_em                  TEXT,
+        CONSTRAINT unq_colab_competencia UNIQUE (colaborador_id, competencia)
+    );
+"""
+
+_DDL_FOLHA_ITENS = """
+    CREATE TABLE IF NOT EXISTS folha_itens (
+        id                  {serial} PRIMARY KEY,
+        folha_id            INTEGER NOT NULL
+                            REFERENCES folhas_pagamento(id) ON DELETE CASCADE,
+        codigo_evento       TEXT NOT NULL,
+        descricao           TEXT NOT NULL,
+        tipo                TEXT NOT NULL CHECK (tipo IN ('provento', 'desconto', 'informativo')),
+        referencia          REAL DEFAULT 0.0,
+        unidade_referencia  TEXT,
+        valor_unitario      REAL DEFAULT 0.0,
+        valor_total         REAL NOT NULL DEFAULT 0.0,
+        origem              TEXT NOT NULL DEFAULT 'calculado'
+                            CHECK (origem IN ('sistema', 'calculado', 'manual', 'importado')),
+        memoria_calculo     TEXT,
+        criado_em           TEXT NOT NULL
+    );
+"""
+
+_DDL_FOLHA_HISTORICO = """
+    CREATE TABLE IF NOT EXISTS folha_historico (
+        id                  {serial} PRIMARY KEY,
+        folha_id            INTEGER NOT NULL
+                            REFERENCES folhas_pagamento(id) ON DELETE CASCADE,
+        data_hora           TEXT NOT NULL,
+        acao                TEXT NOT NULL,
+        descricao           TEXT NOT NULL,
+        dados_anteriores    TEXT,
+        dados_novos         TEXT,
+        usuario_responsavel TEXT NOT NULL
+    );
+"""
+
 # ─────────────────────────────────────────────────────────────────────────────
 # Inicializacao
 # ─────────────────────────────────────────────────────────────────────────────
@@ -258,6 +413,10 @@ def init_db(db_path: str = None, auto_provision: bool = True):
     cursor.execute(_DDL_HISTORICO.format(serial=serial))
     cursor.execute(_DDL_USUARIOS_PG if pg else _DDL_USUARIOS_SQLITE)
     cursor.execute(_DDL_SESSOES)
+    cursor.execute(_DDL_FOLHA_PARAMETROS_PG if pg else _DDL_FOLHA_PARAMETROS_SQLITE)
+    cursor.execute(_DDL_FOLHAS_PAGAMENTO_PG if pg else _DDL_FOLHAS_PAGAMENTO_SQLITE)
+    cursor.execute(_DDL_FOLHA_ITENS.format(serial=serial))
+    cursor.execute(_DDL_FOLHA_HISTORICO.format(serial=serial))
 
     indices = [
         "CREATE INDEX IF NOT EXISTS idx_colab_matricula ON colaboradores(matricula);",
@@ -271,12 +430,43 @@ def init_db(db_path: str = None, auto_provision: bool = True):
         "CREATE INDEX IF NOT EXISTS idx_usuario_login   ON usuarios(usuario);",
         "CREATE INDEX IF NOT EXISTS idx_sessao_token    ON sessoes(token);",
         "CREATE INDEX IF NOT EXISTS idx_sessao_user     ON sessoes(usuario_id);",
+        "CREATE INDEX IF NOT EXISTS idx_folha_colab     ON folhas_pagamento(colaborador_id);",
+        "CREATE INDEX IF NOT EXISTS idx_folha_comp      ON folhas_pagamento(competencia);",
+        "CREATE INDEX IF NOT EXISTS idx_folha_situacao  ON folhas_pagamento(situacao);",
+        "CREATE INDEX IF NOT EXISTS idx_folha_itens_folha ON folha_itens(folha_id);",
+        "CREATE INDEX IF NOT EXISTS idx_folha_hist_folha  ON folha_historico(folha_id);",
     ]
     for idx_sql in indices:
         try:
             cursor.execute(idx_sql)
         except Exception:
             pass
+
+    # Provisiona parâmetro padrão de cálculo caso não exista
+    try:
+        p_mark = "%s" if pg else "?"
+        cursor.execute(f"SELECT COUNT(*) FROM folha_parametros WHERE codigo = {p_mark};", ("PADRAO_CLT_2026",))
+        qtd = cursor.fetchone()[0]
+        if qtd == 0:
+            agora = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            cursor.execute(f"""
+                INSERT INTO folha_parametros (
+                    codigo, descricao, vigencia_inicio, vigencia_fim,
+                    horas_mensais_padrao, dias_mes_padrao, percentual_he_padrao,
+                    percentual_he_extra, percentual_adicional_noturno, aplicar_reducao_noturna,
+                    fator_reducao_noturna, aplicar_inss, aplicar_irrf, aliquota_fgts,
+                    teto_inss, deducao_dependente_irrf, ativo, validado_por_profissional,
+                    criado_em, atualizado_em
+                ) VALUES ({p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark}, {p_mark});
+            """, (
+                "PADRAO_CLT_2026", "Parâmetros Gerais CLT 220h / Vigência 2026 (Padrão)",
+                "2026-01-01", None,
+                220.0, 30, 50.0, 100.0, 20.0, 0, 1.142857,
+                1, 1, 8.0, 8157.41, 189.59, 1, 1,
+                agora, agora
+            ))
+    except Exception:
+        pass
 
     conn.commit()
     conn.close()

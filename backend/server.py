@@ -21,22 +21,30 @@ except ImportError:
 try:
     from .service import ColaboradorService, ValidacaoException, RecursoNaoEncontradoException
     from .auth import AuthService, CredenciaisInvalidasException
+    from .folha_service import (
+        FolhaService, FolhaValidacaoException, FolhaNaoEncontradaException, FolhaBloqueadaException
+    )
 except ImportError:
     import sys
     sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
     from backend.service import ColaboradorService, ValidacaoException, RecursoNaoEncontradoException
     from backend.auth import AuthService, CredenciaisInvalidasException
+    from backend.folha_service import (
+        FolhaService, FolhaValidacaoException, FolhaNaoEncontradaException, FolhaBloqueadaException
+    )
 
 PORT = 8000
 FRONTEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "frontend"))
 
 _global_colab_service = None
 _global_auth_service = None
+_global_folha_service = None
 
 class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
     def __init__(self, *args, **kwargs):
         self._local_colab_service = None
         self._local_auth_service = None
+        self._local_folha_service = None
         # Em ambientes serverless (Vercel), FRONTEND_DIR pode não existir no mesmo diretório local
         dir_to_serve = FRONTEND_DIR if os.path.exists(FRONTEND_DIR) else os.getcwd()
         super().__init__(*args, directory=dir_to_serve, **kwargs)
@@ -72,6 +80,23 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
                 _global_auth_service = AuthService(db_path=db_path)
             self._local_auth_service = _global_auth_service
         return self._local_auth_service
+
+    @property
+    def folha_service(self) -> FolhaService:
+        """Garante acesso ao FolhaService tanto em TCPServer quanto em Serverless Functions."""
+        if hasattr(self, "server") and self.server is not None:
+            if not hasattr(self.server, "folha_service"):
+                db_path = getattr(self.service, "db_path", None)
+                self.server.folha_service = FolhaService(db_path=db_path)
+            return self.server.folha_service
+
+        if getattr(self, "_local_folha_service", None) is None:
+            global _global_folha_service
+            if _global_folha_service is None:
+                db_path = getattr(self.service, "db_path", None)
+                _global_folha_service = FolhaService(db_path=db_path)
+            self._local_folha_service = _global_folha_service
+        return self._local_folha_service
 
     def _obter_caminho_e_query(self) -> tuple[str, dict]:
         """
@@ -236,6 +261,66 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
                 except RecursoNaoEncontradoException as e:
                     return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
 
+        # Rota protegida: Parâmetros de cálculo GET /api/folha/parametros
+        if path == "/api/folha/parametros":
+            usuario = self._exigir_autenticacao()
+            if not usuario:
+                return
+            param = self.folha_service.obter_parametro_vigente()
+            return self._enviar_json(200, {"sucesso": True, "dados": param})
+
+        # Rota protegida: Colaboradores elegíveis para folha GET /api/folha/colaboradores
+        if path == "/api/folha/colaboradores":
+            usuario = self._exigir_autenticacao()
+            if not usuario:
+                return
+            colabs = self.service.listar(situacao="ativo")
+            # Adiciona total de dependentes para cálculo facilitado no frontend
+            conn = self.service._conn()
+            cursor = conn.cursor()
+            P = self.service._ph()
+            resultado = []
+            for c in colabs:
+                cursor.execute(f"SELECT COUNT(*) FROM dependentes WHERE colaborador_id = {P}", (c["id"],))
+                c["total_dependentes"] = cursor.fetchone()[0]
+                resultado.append(c)
+            conn.close()
+            return self._enviar_json(200, {"sucesso": True, "total": len(resultado), "dados": resultado})
+
+        # Rota protegida: Listar folhas GET /api/folha
+        if path == "/api/folha":
+            usuario = self._exigir_autenticacao()
+            if not usuario:
+                return
+            comp = query.get("competencia", [None])[0]
+            colab_id = query.get("colaborador_id", [None])[0]
+            situacao = query.get("situacao", [None])[0]
+            setor = query.get("setor", [None])[0]
+            termo = query.get("q", [None])[0]
+
+            folhas = self.folha_service.listar_folhas(
+                competencia=comp,
+                colaborador_id=int(colab_id) if colab_id and colab_id.isdigit() else None,
+                situacao=situacao,
+                setor=setor,
+                termo=termo
+            )
+            return self._enviar_json(200, {"sucesso": True, "total": len(folhas), "dados": folhas})
+
+        # Rota protegida: Obter folha por ID GET /api/folha/<id>
+        if path.startswith("/api/folha/"):
+            partes = path.strip("/").split("/")
+            if len(partes) == 3 and partes[2].isdigit():
+                usuario = self._exigir_autenticacao()
+                if not usuario:
+                    return
+                folha_id = int(partes[2])
+                try:
+                    folha = self.folha_service.obter_folha_por_id(folha_id)
+                    return self._enviar_json(200, {"sucesso": True, "dados": folha})
+                except FolhaNaoEncontradaException as e:
+                    return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
+
         # Servir Frontend estático (index.html, styles.css, app.js) se arquivo existir
         return super().do_GET()
 
@@ -308,10 +393,134 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
             except Exception as e:
                 return self._enviar_json(500, {"sucesso": False, "mensagem": f"Erro interno: {str(e)}"})
 
+        # Rota protegida: Salvar parâmetros da folha POST /api/folha/parametros
+        if path == "/api/folha/parametros":
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth:
+                return
+            try:
+                dados = self._ler_json_body()
+                nome_responsavel = f"{usuario_auth['nome_completo']} ({usuario_auth['perfil']})"
+                salvo = self.folha_service.salvar_parametros(dados, usuario=nome_responsavel)
+                return self._enviar_json(200, {
+                    "sucesso": True,
+                    "mensagem": "Parâmetros de cálculo da folha atualizados com sucesso!",
+                    "dados": salvo
+                })
+            except Exception as e:
+                return self._enviar_json(500, {"sucesso": False, "mensagem": f"Erro interno: {str(e)}"})
+
+        # Rota protegida: Criar folha POST /api/folha
+        if path == "/api/folha":
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth:
+                return
+            try:
+                dados = self._ler_json_body()
+                nome_responsavel = f"{usuario_auth['nome_completo']} ({usuario_auth['perfil']})"
+                
+                colab_id = dados.get("colaborador_id")
+                competencia = dados.get("competencia", "").strip()
+                if not colab_id or not competencia:
+                    return self._enviar_json(400, {
+                        "sucesso": False,
+                        "mensagem": "Informe o colaborador e a competência (AAAA-MM)."
+                    })
+
+                folha = self.folha_service.criar_ou_atualizar_folha(
+                    colaborador_id=int(colab_id),
+                    competencia=competencia,
+                    periodo_inicio=dados.get("periodo_inicio", f"{competencia}-01"),
+                    periodo_fim=dados.get("periodo_fim", f"{competencia}-30"),
+                    data_pagamento=dados.get("data_pagamento"),
+                    dias_trabalhados=float(dados.get("dias_trabalhados", 30)),
+                    dias_mes=int(dados.get("dias_mes", 30)),
+                    horas_divisor=float(dados.get("horas_divisor", 220.0)),
+                    eventos=dados.get("eventos", []),
+                    observacoes=dados.get("observacoes", ""),
+                    usuario=nome_responsavel
+                )
+                return self._enviar_json(201, {
+                    "sucesso": True,
+                    "mensagem": "Folha de pagamento gerada e calculada com sucesso!",
+                    "dados": folha
+                })
+            except FolhaValidacaoException as e:
+                return self._enviar_json(400, {
+                    "sucesso": False,
+                    "mensagem": "Inconsistência nos parâmetros da folha.",
+                    "erros": e.erros
+                })
+            except FolhaNaoEncontradaException as e:
+                return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
+            except ValueError as e:
+                return self._enviar_json(400, {"sucesso": False, "mensagem": str(e)})
+            except Exception as e:
+                return self._enviar_json(500, {"sucesso": False, "mensagem": f"Erro interno: {str(e)}"})
+
+        # Rota protegida: Ações na folha POST /api/folha/<id>/fechar ou /reabrir ou /calcular
+        if path.startswith("/api/folha/"):
+            partes = path.strip("/").split("/")
+            if len(partes) == 4 and partes[1] == "folha" and partes[2].isdigit():
+                usuario_auth = self._exigir_autenticacao()
+                if not usuario_auth:
+                    return
+                folha_id = int(partes[2])
+                acao = partes[3]
+                nome_responsavel = f"{usuario_auth['nome_completo']} ({usuario_auth['perfil']})"
+
+                try:
+                    if acao == "fechar":
+                        fechada = self.folha_service.fechar_folha(folha_id, usuario=nome_responsavel)
+                        return self._enviar_json(200, {
+                            "sucesso": True,
+                            "mensagem": f"Folha #{folha_id} homologada e fechada com sucesso!",
+                            "dados": fechada
+                        })
+                    elif acao == "reabrir":
+                        corpo = self._ler_json_body()
+                        motivo = corpo.get("motivo", "")
+                        reaberta = self.folha_service.reabrir_folha(folha_id, motivo=motivo, usuario=nome_responsavel)
+                        return self._enviar_json(200, {
+                            "sucesso": True,
+                            "mensagem": f"Folha #{folha_id} reaberta para edição.",
+                            "dados": reaberta
+                        })
+                    elif acao == "calcular":
+                        corpo = self._ler_json_body()
+                        folha_antiga = self.folha_service.obter_folha_por_id(folha_id)
+                        atualizada = self.folha_service.criar_ou_atualizar_folha(
+                            colaborador_id=folha_antiga["colaborador_id"],
+                            competencia=folha_antiga["competencia"],
+                            periodo_inicio=corpo.get("periodo_inicio", folha_antiga["periodo_inicio"]),
+                            periodo_fim=corpo.get("periodo_fim", folha_antiga["periodo_fim"]),
+                            data_pagamento=corpo.get("data_pagamento", folha_antiga.get("data_pagamento")),
+                            dias_trabalhados=float(corpo.get("dias_trabalhados", folha_antiga["dias_trabalhados"])),
+                            dias_mes=int(corpo.get("dias_mes", folha_antiga["dias_mes"])),
+                            horas_divisor=float(corpo.get("horas_divisor", folha_antiga["horas_mensais_divisor"])),
+                            eventos=corpo.get("eventos", []),
+                            observacoes=corpo.get("observacoes", folha_antiga.get("observacoes", "")),
+                            usuario=nome_responsavel,
+                            folha_id_existente=folha_id
+                        )
+                        return self._enviar_json(200, {
+                            "sucesso": True,
+                            "mensagem": "Folha recalculada com sucesso!",
+                            "dados": atualizada
+                        })
+                except FolhaBloqueadaException as e:
+                    return self._enviar_json(403, {"sucesso": False, "mensagem": str(e)})
+                except FolhaValidacaoException as e:
+                    return self._enviar_json(400, {"sucesso": False, "mensagem": str(e), "erros": e.erros})
+                except FolhaNaoEncontradaException as e:
+                    return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
+                except Exception as e:
+                    return self._enviar_json(500, {"sucesso": False, "mensagem": f"Erro interno: {str(e)}"})
+
         return self._enviar_json(404, {"sucesso": False, "mensagem": f"Rota não encontrada: {path}"})
 
     def do_PUT(self):
-        """Trata atualização completa PUT /api/colaboradores/<id>."""
+        """Trata atualização completa PUT /api/colaboradores/<id> ou /api/folha/<id>."""
         path, _ = self._obter_caminho_e_query()
         partes = path.strip("/").split("/")
 
@@ -336,6 +545,69 @@ class ApiColaboradorHandler(http.server.SimpleHTTPRequestHandler):
                     "erros": e.erros
                 })
             except RecursoNaoEncontradoException as e:
+                return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
+            except Exception as e:
+                return self._enviar_json(500, {"sucesso": False, "mensagem": f"Erro interno: {str(e)}"})
+
+        if len(partes) == 3 and partes[1] == "folha" and partes[2].isdigit():
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth:
+                return
+            folha_id = int(partes[2])
+            try:
+                corpo = self._ler_json_body()
+                nome_responsavel = f"{usuario_auth['nome_completo']} ({usuario_auth['perfil']})"
+                folha_antiga = self.folha_service.obter_folha_por_id(folha_id)
+                atualizada = self.folha_service.criar_ou_atualizar_folha(
+                    colaborador_id=folha_antiga["colaborador_id"],
+                    competencia=folha_antiga["competencia"],
+                    periodo_inicio=corpo.get("periodo_inicio", folha_antiga["periodo_inicio"]),
+                    periodo_fim=corpo.get("periodo_fim", folha_antiga["periodo_fim"]),
+                    data_pagamento=corpo.get("data_pagamento", folha_antiga.get("data_pagamento")),
+                    dias_trabalhados=float(corpo.get("dias_trabalhados", folha_antiga["dias_trabalhados"])),
+                    dias_mes=int(corpo.get("dias_mes", folha_antiga["dias_mes"])),
+                    horas_divisor=float(corpo.get("horas_divisor", folha_antiga["horas_mensais_divisor"])),
+                    eventos=corpo.get("eventos", []),
+                    observacoes=corpo.get("observacoes", folha_antiga.get("observacoes", "")),
+                    usuario=nome_responsavel,
+                    folha_id_existente=folha_id
+                )
+                return self._enviar_json(200, {
+                    "sucesso": True,
+                    "mensagem": "Folha de pagamento atualizada com sucesso!",
+                    "dados": atualizada
+                })
+            except FolhaBloqueadaException as e:
+                return self._enviar_json(403, {"sucesso": False, "mensagem": str(e)})
+            except FolhaValidacaoException as e:
+                return self._enviar_json(400, {"sucesso": False, "mensagem": str(e), "erros": e.erros})
+            except FolhaNaoEncontradaException as e:
+                return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
+            except Exception as e:
+                return self._enviar_json(500, {"sucesso": False, "mensagem": f"Erro interno: {str(e)}"})
+
+        return self._enviar_json(404, {"sucesso": False, "mensagem": f"Rota não encontrada: {path}"})
+
+    def do_DELETE(self):
+        """Trata exclusão de folha: DELETE /api/folha/<id>."""
+        path, _ = self._obter_caminho_e_query()
+        partes = path.strip("/").split("/")
+
+        if len(partes) == 3 and partes[1] == "folha" and partes[2].isdigit():
+            usuario_auth = self._exigir_autenticacao()
+            if not usuario_auth:
+                return
+            folha_id = int(partes[2])
+            nome_responsavel = f"{usuario_auth['nome_completo']} ({usuario_auth['perfil']})"
+            try:
+                self.folha_service.cancelar_folha(folha_id, usuario=nome_responsavel)
+                return self._enviar_json(200, {
+                    "sucesso": True,
+                    "mensagem": f"Folha #{folha_id} cancelada com sucesso."
+                })
+            except FolhaBloqueadaException as e:
+                return self._enviar_json(403, {"sucesso": False, "mensagem": str(e)})
+            except FolhaNaoEncontradaException as e:
                 return self._enviar_json(404, {"sucesso": False, "mensagem": str(e)})
             except Exception as e:
                 return self._enviar_json(500, {"sucesso": False, "mensagem": f"Erro interno: {str(e)}"})
@@ -385,6 +657,7 @@ def run_server(port: int = PORT, db_path: str = None):
     httpd = socketserver.TCPServer(server_address, ApiColaboradorHandler)
     httpd.colab_service = ColaboradorService(db_path=db_path)
     httpd.auth_service = AuthService(db_path=db_path)
+    httpd.folha_service = FolhaService(db_path=db_path)
     print(f"Servidor rodando em http://localhost:{port}")
     try:
         httpd.serve_forever()

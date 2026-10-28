@@ -61,12 +61,20 @@ def testar_banco():
         cursor.execute("SELECT COUNT(*) FROM historico_alteracoes;")
         total_hist = cursor.fetchone()[0]
 
+        cursor.execute("SELECT COUNT(*) FROM folha_parametros;")
+        total_param = cursor.fetchone()[0]
+
+        cursor.execute("SELECT COUNT(*) FROM folhas_pagamento;")
+        total_folhas = cursor.fetchone()[0]
+
         conn.close()
 
         print(f"   -> Colaboradores cadastrados: {total_colabs}")
         print(f"   -> Usuários do sistema:      {total_users}")
         print(f"   -> Dependentes cadastrados:   {total_dep}")
         print(f"   -> Registros de auditoria:    {total_hist}")
+        print(f"   -> Parâmetros de folha:       {total_param}")
+        print(f"   -> Folhas de pagamento:       {total_folhas}")
         print("\n[SUCESSO] O banco de dados está operando 100% corretamente!")
         return True
     except Exception as e:

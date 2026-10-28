@@ -125,6 +125,93 @@ def migrar():
             ))
         pg_cursor.execute("SELECT setval('historico_alteracoes_id_seq', COALESCE((SELECT MAX(id) FROM historico_alteracoes), 1));")
 
+        # Migrar folha_parametros
+        sq_cursor.execute("SELECT * FROM folha_parametros ORDER BY id;")
+        parametros = sq_cursor.fetchall()
+        print(f"6. Migrando {len(parametros)} parâmetros de folha...")
+        for p in parametros:
+            pg_cursor.execute("""
+                INSERT INTO folha_parametros (
+                    id, codigo, descricao, vigencia_inicio, vigencia_fim,
+                    horas_mensais_padrao, dias_mes_padrao, percentual_he_padrao,
+                    percentual_he_extra, percentual_adicional_noturno, aplicar_reducao_noturna,
+                    fator_reducao_noturna, aplicar_inss, aplicar_irrf, aliquota_fgts,
+                    teto_inss, deducao_dependente_irrf, ativo, validado_por_profissional,
+                    criado_em, atualizado_em
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (codigo) DO UPDATE SET
+                    descricao = EXCLUDED.descricao,
+                    vigencia_inicio = EXCLUDED.vigencia_inicio,
+                    vigencia_fim = EXCLUDED.vigencia_fim,
+                    atualizado_em = EXCLUDED.atualizado_em;
+            """, (
+                p["id"], p["codigo"], p["descricao"], p["vigencia_inicio"], p["vigencia_fim"],
+                p["horas_mensais_padrao"], p["dias_mes_padrao"], p["percentual_he_padrao"],
+                p["percentual_he_extra"], p["percentual_adicional_noturno"], p["aplicar_reducao_noturna"],
+                p["fator_reducao_noturna"], p["aplicar_inss"], p["aplicar_irrf"], p["aliquota_fgts"],
+                p["teto_inss"], p["deducao_dependente_irrf"], p["ativo"], p["validado_por_profissional"],
+                p["criado_em"], p["atualizado_em"]
+            ))
+        pg_cursor.execute("SELECT setval('folha_parametros_id_seq', COALESCE((SELECT MAX(id) FROM folha_parametros), 1));")
+
+        # Migrar folhas_pagamento
+        sq_cursor.execute("SELECT * FROM folhas_pagamento ORDER BY id;")
+        folhas = sq_cursor.fetchall()
+        print(f"7. Migrando {len(folhas)} folhas de pagamento...")
+        for f in folhas:
+            pg_cursor.execute("""
+                INSERT INTO folhas_pagamento (
+                    id, colaborador_id, competencia, periodo_inicio, periodo_fim, data_pagamento,
+                    dias_trabalhados, dias_mes, horas_mensais_divisor, salario_base_contratual,
+                    salario_base_proporcional, total_proventos, total_descontos, salario_liquido,
+                    base_inss, base_fgts, valor_fgts_informativo, base_irrf, situacao, observacoes,
+                    parametro_id, criado_por, criado_em, atualizado_por, atualizado_em, fechado_por, fechado_em
+                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                ON CONFLICT (colaborador_id, competencia) DO NOTHING;
+            """, (
+                f["id"], f["colaborador_id"], f["competencia"], f["periodo_inicio"], f["periodo_fim"], f["data_pagamento"],
+                f["dias_trabalhados"], f["dias_mes"], f["horas_mensais_divisor"], f["salario_base_contratual"],
+                f["salario_base_proporcional"], f["total_proventos"], f["total_descontos"], f["salario_liquido"],
+                f["base_inss"], f["base_fgts"], f["valor_fgts_informativo"], f["base_irrf"], f["situacao"], f["observacoes"],
+                f["parametro_id"], f["criado_por"], f["criado_em"], f["atualizado_por"], f["atualizado_em"], f["fechado_por"], f["fechado_em"]
+            ))
+        pg_cursor.execute("SELECT setval('folhas_pagamento_id_seq', COALESCE((SELECT MAX(id) FROM folhas_pagamento), 1));")
+
+        # Migrar folha_itens
+        sq_cursor.execute("SELECT * FROM folha_itens ORDER BY id;")
+        itens = sq_cursor.fetchall()
+        print(f"8. Migrando {len(itens)} itens de folha...")
+        for item in itens:
+            pg_cursor.execute("""
+                INSERT INTO folha_itens (
+                    id, folha_id, codigo_evento, descricao, tipo, referencia,
+                    unidade_referencia, valor_unitario, valor_total, origem, memoria_calculo, criado_em
+                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                ON CONFLICT DO NOTHING;
+            """, (
+                item["id"], item["folha_id"], item["codigo_evento"], item["descricao"],
+                item["tipo"], item["referencia"], item["unidade_referencia"],
+                item["valor_unitario"], item["valor_total"], item["origem"],
+                item["memoria_calculo"], item["criado_em"]
+            ))
+        pg_cursor.execute("SELECT setval('folha_itens_id_seq', COALESCE((SELECT MAX(id) FROM folha_itens), 1));")
+
+        # Migrar folha_historico
+        sq_cursor.execute("SELECT * FROM folha_historico ORDER BY id;")
+        f_hist = sq_cursor.fetchall()
+        print(f"9. Migrando {len(f_hist)} históricos de auditoria de folha...")
+        for fh in f_hist:
+            pg_cursor.execute("""
+                INSERT INTO folha_historico (
+                    id, folha_id, data_hora, acao, descricao, dados_anteriores, dados_novos, usuario_responsavel
+                ) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+                ON CONFLICT DO NOTHING;
+            """, (
+                fh["id"], fh["folha_id"], fh["data_hora"], fh["acao"], fh["descricao"],
+                fh["dados_anteriores"], fh["dados_novos"], fh["usuario_responsavel"]
+            ))
+        pg_cursor.execute("SELECT setval('folha_historico_id_seq', COALESCE((SELECT MAX(id) FROM folha_historico), 1));")
+
         pg_conn.commit()
         print("\n[SUCESSO] Todos os dados foram migrados com sucesso para o PostgreSQL!")
         return True

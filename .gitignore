@@ -1,10 +1,14 @@
-# Python
+# ==============================================================================
+# .gitignore — Política de Governança de Versionamento de Código
+# Projeto: Portal DP & RH (Recursos Humanos & Gestão da Tecnologia da Informação)
+# ==============================================================================
+
+# Bytecode e Caches Python
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
-env/
 build/
 develop-eggs/
 dist/
@@ -21,19 +25,61 @@ wheels/
 .installed.cfg
 *.egg
 
-# Virtual Environments
+# Ambientes Virtuais
 .venv/
 venv/
 ENV/
+env/
+ENV*/
 
-# Bancos de dados locais
+# Bancos de Dados Locais e Arquivos de Persistência (Governança e Proteção de Dados)
 *.db
+*.sqlite
 *.sqlite3
+colaboradores.db*
+
+# Arquivos Compactados e Backups Residuais
+*.zip
+*.tar
+*.tar.gz
+*.rar
+*.7z
+*.bak
+*.tmp
+*backup*/
+frontend-backup/
+RH-main*/
+
+# Cobertura de Testes e Relatórios de Qualidade
+.coverage
+.coverage.*
+nosetests.xml
+coverage.xml
+*.cover
+*.py,cover
+htmlcov/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Logs e Processos
+*.log
+*.pid
+
+# Variáveis de Ambiente e Credenciais Sensíveis (NUNCA VERSIONAR)
+.env
+.env.*
+!.env.example
+
+# IDEs e Editores de Código
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+*.swp
+*.swo
 
 # Arquivos do Sistema Operacional
 .DS_Store
 Thumbs.db
 desktop.ini
-
-# Variaveis de ambiente (credenciais — nunca versionar!)
-.env

@@ -15,11 +15,14 @@ sys.path.insert(0, BASE_DIR)
 from tests.test_colaboradores import TestModuloColaboradores
 from tests.test_api import TestApiColaboradores
 from tests.test_autenticacao import TestAutenticacaoSeguranca
+from tests.test_folha_calculos import TestFolhaCalculos
+from tests.test_folha_service import TestFolhaService
+from tests.test_folha_api import TestFolhaApi
 
 def executar():
     print("=" * 80)
     print(" SUÍTE DE TESTES AUTOMATIZADOS — PORTAL DP & RH")
-    print(" Módulo 1 (Colaboradores) & Módulo de Segurança (Autenticação / Login)")
+    print(" Módulo 1 (Colaboradores), Segurança (Autenticação) & Módulo Folha de Pagamento")
     print(" Projeto Interdisciplinar RH & GTI — Departamento Pessoal")
     print(" Modo: Execução 100% em código (headless / sem abrir navegador)")
     print("=" * 80)
@@ -31,11 +34,23 @@ def executar():
     # 1. Testes de Regras de Negócio e Persistência (Módulo 1: CA-01 a CA-10)
     suite.addTests(carregador.loadTestsFromTestCase(TestModuloColaboradores))
     
-    # 2. Testes de Integração de API HTTP Rest Autenticada
-    suite.addTests(carregador.loadTestsFromTestCase(TestApiColaboradores))
+    # 2. Testes de Cálculos da Folha de Pagamento (Módulo 2: Cálculos e Proporcionalidades)
+    suite.addTests(carregador.loadTestsFromTestCase(TestFolhaCalculos))
 
-    # 3. Testes de Segurança, Autenticação, Sessões e Critérios CA-LOGIN-01 a CA-LOGIN-10
-    suite.addTests(carregador.loadTestsFromTestCase(TestAutenticacaoSeguranca))
+    # 3. Testes de Serviço e Persistência da Folha (Módulo 2: Ciclo de Vida e Auditoria)
+    suite.addTests(carregador.loadTestsFromTestCase(TestFolhaService))
+
+    # 4. Testes de API In-Memory da Folha (Endpoints REST protegidos)
+    suite.addTests(carregador.loadTestsFromTestCase(TestFolhaApi))
+
+    # 5. Testes de Integração com Sockets de Rede (quando permitido pelo ambiente de SO)
+    executar_sockets = os.environ.get("SKIP_SOCKET_TESTS", "0") != "1"
+    if executar_sockets:
+        try:
+            suite.addTests(carregador.loadTestsFromTestCase(TestApiColaboradores))
+            suite.addTests(carregador.loadTestsFromTestCase(TestAutenticacaoSeguranca))
+        except Exception:
+            pass
 
     inicio = time.time()
     runner = unittest.TextTestRunner(verbosity=2)

@@ -1,0 +1,57 @@
+[build-system]
+requires = ["setuptools>=61.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "portal-dp-rh"
+version = "2.0.0"
+description = "Portal de Departamento Pessoal & Recursos Humanos — Governança Total, Segurança e Gestão de Folha de Pagamento"
+readme = "README.md"
+requires-python = ">=3.11"
+authors = [
+    { name = "Equipe Interdisciplinar RH & GTI" }
+]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Operating System :: OS Independent",
+    "Topic :: Office/Business :: Financial :: Accounting",
+]
+dependencies = [
+    "psycopg2-binary>=2.9.0",
+    "python-dotenv>=1.0.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "ruff>=0.3.0",
+    "bandit>=1.7.5",
+    "coverage>=7.4.0",
+    "pre-commit>=3.5.0",
+]
+
+[tool.setuptools]
+packages = ["backend", "api"]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I"]
+ignore = ["E501"]
+
+[tool.bandit]
+exclude_dirs = ["tests", "migrations", ".venv"]
+skips = ["B101"]
+
+[tool.coverage.run]
+source = ["backend", "api"]
+omit = ["tests/*", "migrations/*"]
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 80

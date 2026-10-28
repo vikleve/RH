@@ -1201,8 +1201,1046 @@ function configurarEventos() {
   });
 }
 
+// ============================================================================
+// MÓDULO 2: FOLHA DE PAGAMENTO (GERENCIADOR DO CLIENTE)
+// ============================================================================
+const FolhaManager = {
+  folhas: [],
+  colaboradoresElegiveis: [],
+  parametrosVigentes: null,
+  rubricasManuais: [],
+  folhaEmEdicao: null,
+  folhaParaFecharOuReabrir: null,
+  filtros: {
+    competencia: '2026-10',
+    situacao: 'todos',
+    setor: '',
+    termo: ''
+  },
+
+  inicializar() {
+    this.configurarNavegacaoAbas();
+    this.configurarFiltros();
+    this.configurarEventosModal();
+    this.configurarEventosHolerite();
+  },
+
+  configurarNavegacaoAbas() {
+    const tabColab = document.getElementById('nav-tab-colaboradores');
+    const tabFolha = document.getElementById('nav-tab-folha');
+    const viewColab = document.getElementById('view-modulo-colaboradores');
+    const viewFolha = document.getElementById('view-modulo-folha');
+
+    if (tabColab && tabFolha && viewColab && viewFolha) {
+      tabColab.addEventListener('click', () => {
+        tabColab.classList.add('active');
+        tabFolha.classList.remove('active');
+        viewColab.classList.remove('hidden');
+        viewFolha.classList.add('hidden');
+      });
+
+      tabFolha.addEventListener('click', async () => {
+        tabFolha.classList.add('active');
+        tabColab.classList.remove('active');
+        viewFolha.classList.remove('hidden');
+        viewColab.classList.add('hidden');
+        await this.carregarParametros();
+        await this.carregarFolhas();
+      });
+    }
+  },
+
+  async carregarParametros() {
+    try {
+      const resp = await fetch(`${API_BASE}/folha/parametros`, {
+        headers: getAuthHeaders(),
+        credentials: 'include'
+      });
+      if (resp.ok) {
+        const json = await resp.json();
+        if (json.sucesso && json.dados) {
+          this.parametrosVigentes = json.dados;
+        }
+      }
+    } catch (e) {
+      console.warn('Não foi possível obter os parâmetros da folha:', e);
+    }
+  },
+
+  async carregarColaboradoresElegiveis() {
+    try {
+      const resp = await fetch(`${API_BASE}/folha/colaboradores`, {
+        headers: getAuthHeaders(),
+        credentials: 'include'
+      });
+      if (resp.ok) {
+        const json = await resp.json();
+        if (json.sucesso && json.dados) {
+          this.colaboradoresElegiveis = json.dados;
+          const select = document.getElementById('folha-campo-colaborador');
+          if (select) {
+            select.innerHTML = '<option value="">Selecione um colaborador ativo...</option>';
+            this.colaboradoresElegiveis.forEach(c => {
+              const opt = document.createElement('option');
+              opt.value = c.id;
+              opt.textContent = `${c.matricula} — ${c.nome_completo} (${c.cargo})`;
+              select.appendChild(opt);
+            });
+          }
+        }
+      }
+    } catch (e) {
+      console.error('Erro ao carregar colaboradores elegíveis:', e);
+    }
+  },
+
+  configurarFiltros() {
+    const inputCompetencia = document.getElementById('filtro-folha-competencia');
+    const selectSituacao = document.getElementById('filtro-folha-situacao');
+    const selectSetor = document.getElementById('filtro-folha-setor');
+    const inputPesquisa = document.getElementById('filtro-folha-pesquisa');
+    const btnLimparPesquisa = document.getElementById('btn-limpar-pesquisa-folha');
+    const btnLimparFiltros = document.getElementById('btn-limpar-filtros-folha');
+    const btnNovaFolha = document.getElementById('btn-nova-folha');
+    const btnParametros = document.getElementById('btn-parametros-folha');
+
+    if (inputCompetencia) {
+      inputCompetencia.addEventListener('change', (e) => {
+        this.filtros.competencia = e.target.value;
+        this.carregarFolhas();
+      });
+    }
+
+    if (selectSituacao) {
+      selectSituacao.addEventListener('change', (e) => {
+        this.filtros.situacao = e.target.value;
+        this.carregarFolhas();
+      });
+    }
+
+    if (selectSetor) {
+      selectSetor.addEventListener('change', (e) => {
+        this.filtros.setor = e.target.value;
+        this.carregarFolhas();
+      });
+    }
+
+    let timerFiltro = null;
+    if (inputPesquisa) {
+      inputPesquisa.addEventListener('input', (e) => {
+        const val = e.target.value;
+        if (btnLimparPesquisa) btnLimparPesquisa.classList.toggle('hidden', !val);
+        clearTimeout(timerFiltro);
+        timerFiltro = setTimeout(() => {
+          this.filtros.termo = val;
+          this.carregarFolhas();
+        }, 280);
+      });
+    }
+
+    if (btnLimparPesquisa) {
+      btnLimparPesquisa.addEventListener('click', () => {
+        inputPesquisa.value = '';
+        btnLimparPesquisa.classList.add('hidden');
+        this.filtros.termo = '';
+        this.carregarFolhas();
+      });
+    }
+
+    if (btnLimparFiltros) {
+      btnLimparFiltros.addEventListener('click', () => {
+        if (inputPesquisa) inputPesquisa.value = '';
+        if (btnLimparPesquisa) btnLimparPesquisa.classList.add('hidden');
+        if (selectSituacao) selectSituacao.value = 'todos';
+        if (selectSetor) selectSetor.value = '';
+        this.filtros = {
+          competencia: inputCompetencia ? inputCompetencia.value : '2026-10',
+          situacao: 'todos',
+          setor: '',
+          termo: ''
+        };
+        this.carregarFolhas();
+      });
+    }
+
+    if (btnNovaFolha) {
+      btnNovaFolha.addEventListener('click', () => this.abrirModalNovaFolha());
+    }
+
+    if (btnParametros) {
+      btnParametros.addEventListener('click', () => this.abrirModalParametros());
+    }
+  },
+
+  async carregarFolhas() {
+    const params = new URLSearchParams();
+    if (this.filtros.competencia) params.append('competencia', this.filtros.competencia);
+    if (this.filtros.situacao && this.filtros.situacao !== 'todos') params.append('situacao', this.filtros.situacao);
+    if (this.filtros.setor) params.append('setor', this.filtros.setor);
+    if (this.filtros.termo) params.append('q', this.filtros.termo);
+
+    try {
+      const resp = await fetch(`${API_BASE}/folha?${params.toString()}`, {
+        headers: getAuthHeaders(),
+        credentials: 'include'
+      });
+
+      if (resp.status === 401) {
+        AuthManager.exibirTelaLogin();
+        return;
+      }
+
+      if (resp.ok) {
+        const json = await resp.json();
+        this.folhas = json.dados || [];
+        this.renderizarTabelaFolhas();
+        this.atualizarCardsMetricas();
+      }
+    } catch (e) {
+      console.error('Erro ao consultar folhas de pagamento:', e);
+      exibirToast('Não foi possível carregar as folhas de pagamento.', 'error');
+    }
+  },
+
+  atualizarCardsMetricas() {
+    const elTotal = document.getElementById('stat-folha-total');
+    const elProventos = document.getElementById('stat-folha-proventos');
+    const elDescontos = document.getElementById('stat-folha-descontos');
+    const elLiquido = document.getElementById('stat-folha-liquido');
+
+    let totalBruto = 0;
+    let totalDesc = 0;
+    let totalLiq = 0;
+
+    this.folhas.forEach(f => {
+      totalBruto += Number(f.total_proventos || 0);
+      totalDesc += Number(f.total_descontos || 0);
+      totalLiq += Number(f.salario_liquido || 0);
+    });
+
+    if (elTotal) elTotal.textContent = String(this.folhas.length);
+    if (elProventos) elProventos.textContent = formatarMoeda(totalBruto);
+    if (elDescontos) elDescontos.textContent = formatarMoeda(totalDesc);
+    if (elLiquido) elLiquido.textContent = formatarMoeda(totalLiq);
+  },
+
+  renderizarTabelaFolhas() {
+    const corpo = document.getElementById('corpo-tabela-folha');
+    const estadoVazio = document.getElementById('estado-vazio-folha');
+    if (!corpo) return;
+
+    corpo.innerHTML = '';
+
+    if (this.folhas.length === 0) {
+      if (estadoVazio) estadoVazio.classList.remove('hidden');
+      return;
+    }
+
+    if (estadoVazio) estadoVazio.classList.add('hidden');
+
+    this.folhas.forEach(f => {
+      const tr = document.createElement('tr');
+
+      let badgeClass = 'badge-calculada';
+      if (f.situacao === 'fechada') badgeClass = 'badge-fechada';
+      if (f.situacao === 'rascunho') badgeClass = 'badge-rascunho';
+      if (f.situacao === 'cancelada') badgeClass = 'badge-cancelada';
+
+      const isFechada = f.situacao === 'fechada';
+
+      tr.innerHTML = `
+        <td>
+          <div class="user-cell">
+            <span class="user-name">${f.colaborador_nome || '--'}</span>
+            <span class="user-matricula">Matrícula: ${f.colaborador_matricula || '--'} &bull; CPF: ${formatarCpf(f.colaborador_cpf || '')}</span>
+            <span class="text-xs text-muted">${f.colaborador_cargo || ''} (${f.colaborador_setor || ''})</span>
+          </div>
+        </td>
+        <td>
+          <strong>${f.competencia}</strong>
+        </td>
+        <td>
+          <div style="font-size: 0.8rem;">
+            <span>${formatarDataBR(f.periodo_inicio)} a ${formatarDataBR(f.periodo_fim)}</span>
+            ${f.data_pagamento ? `<div class="text-muted text-xs">Pagto: ${formatarDataBR(f.data_pagamento)}</div>` : ''}
+          </div>
+        </td>
+        <td class="text-money">${formatarMoeda(f.salario_base_contratual)}</td>
+        <td class="text-money text-green">+ ${formatarMoeda(f.total_proventos)}</td>
+        <td class="text-money text-gray">- ${formatarMoeda(f.total_descontos)}</td>
+        <td class="text-money" style="font-weight: 700; color: #1e3a8a;">${formatarMoeda(f.salario_liquido)}</td>
+        <td>
+          <span class="badge-status ${badgeClass}">${f.situacao}</span>
+        </td>
+        <td class="text-right">
+          <div class="action-buttons">
+            <button class="btn-action btn-action-view" data-folha-id="${f.id}" title="Visualizar Demonstrativo / Imprimir Holerite">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+                <line x1="16" y1="13" x2="8" y2="13"></line>
+                <line x1="16" y1="17" x2="8" y2="17"></line>
+                <polyline points="10 9 9 9 8 9"></polyline>
+              </svg>
+              Holerite
+            </button>
+            ${!isFechada ? `
+              <button class="btn-action btn-action-edit" data-folha-id="${f.id}" title="Editar eventos e recalcular">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M12 20h9"></path>
+                  <path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"></path>
+                </svg>
+              </button>
+              <button class="btn-action btn-action-close" data-folha-id="${f.id}" title="Fechar e homologar folha" style="color: #166534;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                </svg>
+              </button>
+              <button class="btn-action btn-action-delete" data-folha-id="${f.id}" title="Cancelar folha" style="color: #b91c1c;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="3 6 5 6 21 6"></polyline>
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                </svg>
+              </button>
+            ` : `
+              <button class="btn-action btn-action-reopen" data-folha-id="${f.id}" title="Reabrir folha fechada" style="color: #d97706;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+                  <path d="M7 11V7a5 5 0 0 1 9.9-1"></path>
+                </svg>
+              </button>
+            `}
+          </div>
+        </td>
+      `;
+
+      corpo.appendChild(tr);
+    });
+
+    // Delegar eventos de botões da tabela
+    corpo.querySelectorAll('.btn-action-view').forEach(btn => {
+      btn.addEventListener('click', () => this.abrirModalHolerite(btn.dataset.folhaId));
+    });
+
+    corpo.querySelectorAll('.btn-action-edit').forEach(btn => {
+      btn.addEventListener('click', () => this.abrirModalEdicaoFolha(btn.dataset.folhaId));
+    });
+
+    corpo.querySelectorAll('.btn-action-close').forEach(btn => {
+      btn.addEventListener('click', () => this.solicitarFechamento(btn.dataset.folhaId));
+    });
+
+    corpo.querySelectorAll('.btn-action-delete').forEach(btn => {
+      btn.addEventListener('click', () => this.excluirFolha(btn.dataset.folhaId));
+    });
+
+    corpo.querySelectorAll('.btn-action-reopen').forEach(btn => {
+      btn.addEventListener('click', () => this.solicitarReabertura(btn.dataset.folhaId));
+    });
+  },
+
+  async abrirModalNovaFolha() {
+    this.folhaEmEdicao = null;
+    this.rubricasManuais = [];
+    document.getElementById('modal-folha-title').textContent = 'Lançar & Calcular Nova Folha de Pagamento';
+    document.getElementById('folha-id-edicao').value = '';
+    document.getElementById('form-folha-pagamento').reset();
+    document.getElementById('folha-form-alerta').classList.add('hidden');
+    document.getElementById('folha-info-colaborador-box').style.display = 'none';
+
+    // Competência padrão conforme filtro
+    const comp = this.filtros.competencia || '2026-10';
+    document.getElementById('folha-campo-competencia').value = comp;
+    document.getElementById('folha-campo-inicio').value = `${comp}-01`;
+    document.getElementById('folha-campo-fim').value = `${comp}-30`;
+    document.getElementById('folha-campo-dias').value = '30';
+    document.getElementById('folha-campo-divisor').value = '220';
+
+    await this.carregarColaboradoresElegiveis();
+    this.renderizarRubricasManuais();
+    this.atualizarPreviaCalculo();
+
+    document.getElementById('modal-folha-form').classList.remove('hidden');
+  },
+
+  async abrirModalEdicaoFolha(folhaId) {
+    try {
+      const resp = await fetch(`${API_BASE}/folha/${folhaId}`, {
+        headers: getAuthHeaders(),
+        credentials: 'include'
+      });
+      if (!resp.ok) {
+        exibirToast('Não foi possível obter dados da folha para edição.', 'error');
+        return;
+      }
+      const json = await resp.json();
+      const folha = json.dados;
+      this.folhaEmEdicao = folha;
+
+      await this.carregarColaboradoresElegiveis();
+
+      document.getElementById('modal-folha-title').textContent = `Editar & Recalcular Folha #${folha.id}`;
+      document.getElementById('folha-id-edicao').value = folha.id;
+      document.getElementById('folha-campo-colaborador').value = folha.colaborador_id;
+      document.getElementById('folha-campo-competencia').value = folha.competencia;
+      document.getElementById('folha-campo-inicio').value = folha.periodo_inicio;
+      document.getElementById('folha-campo-fim').value = folha.periodo_fim;
+      document.getElementById('folha-campo-pagamento').value = folha.data_pagamento || '';
+      document.getElementById('folha-campo-dias').value = folha.dias_trabalhados;
+      document.getElementById('folha-campo-divisor').value = folha.horas_mensais_divisor;
+      document.getElementById('folha-campo-observacoes').value = folha.observacoes || '';
+
+      // Preencher eventos conhecidos
+      let he50 = '';
+      let he100 = '';
+      let noturno = '';
+      let faltas = '';
+      let atrasos = '';
+      this.rubricasManuais = [];
+
+      (folha.itens || []).forEach(it => {
+        if (it.codigo_evento === '101') he50 = it.referencia;
+        else if (it.codigo_evento === '102') he100 = it.referencia;
+        else if (it.codigo_evento === '103') noturno = it.referencia;
+        else if (it.codigo_evento === '201') faltas = it.referencia;
+        else if (it.codigo_evento === '202') atrasos = it.referencia;
+        else if (it.origem === 'manual') {
+          this.rubricasManuais.push({
+            tipo: it.tipo,
+            descricao: it.descricao,
+            referencia: it.referencia,
+            valor_total: it.valor_total
+          });
+        }
+      });
+
+      document.getElementById('folha-campo-he50').value = he50;
+      document.getElementById('folha-campo-he100').value = he100;
+      document.getElementById('folha-campo-noturno').value = noturno;
+      document.getElementById('folha-campo-faltas').value = faltas;
+      document.getElementById('folha-campo-atrasos').value = atrasos;
+
+      this.atualizarCardColaboradorSelecionado(folha.colaborador_id);
+      this.renderizarRubricasManuais();
+      this.atualizarPreviaCalculo();
+
+      document.getElementById('modal-folha-form').classList.remove('hidden');
+    } catch (e) {
+      console.error('Erro ao abrir folha para edição:', e);
+      exibirToast('Erro ao carregar dados da folha.', 'error');
+    }
+  },
+
+  configurarEventosModal() {
+    const btnFechar = document.getElementById('btn-fechar-folha-form');
+    const btnCancelar = document.getElementById('btn-cancelar-folha-form');
+    const selectColab = document.getElementById('folha-campo-colaborador');
+    const btnAddRubrica = document.getElementById('btn-add-rubrica');
+    const btnSimular = document.getElementById('btn-simular-calculo');
+    const formFolha = document.getElementById('form-folha-pagamento');
+
+    if (btnFechar) btnFechar.addEventListener('click', () => {
+      document.getElementById('modal-folha-form').classList.add('hidden');
+    });
+
+    if (btnCancelar) btnCancelar.addEventListener('click', () => {
+      document.getElementById('modal-folha-form').classList.add('hidden');
+    });
+
+    if (selectColab) {
+      selectColab.addEventListener('change', (e) => {
+        this.atualizarCardColaboradorSelecionado(e.target.value);
+        this.atualizarPreviaCalculo();
+      });
+    }
+
+    if (btnAddRubrica) {
+      btnAddRubrica.addEventListener('click', () => {
+        this.rubricasManuais.push({
+          tipo: 'provento',
+          descricao: 'Bônus / Reembolso',
+          referencia: 1,
+          valor_total: 100.00
+        });
+        this.renderizarRubricasManuais();
+        this.atualizarPreviaCalculo();
+      });
+    }
+
+    // Recalcula prévia ao alterar qualquer número
+    ['folha-campo-dias', 'folha-campo-divisor', 'folha-campo-he50', 'folha-campo-he100', 'folha-campo-noturno', 'folha-campo-faltas', 'folha-campo-atrasos'].forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.addEventListener('input', () => this.atualizarPreviaCalculo());
+    });
+
+    if (btnSimular) {
+      btnSimular.addEventListener('click', () => this.atualizarPreviaCalculo());
+    }
+
+    if (formFolha) {
+      formFolha.addEventListener('submit', (e) => {
+        e.preventDefault();
+        this.salvarFolha();
+      });
+    }
+  },
+
+  atualizarCardColaboradorSelecionado(colabId) {
+    const box = document.getElementById('folha-info-colaborador-box');
+    if (!colabId) {
+      if (box) box.style.display = 'none';
+      return;
+    }
+
+    const c = this.colaboradoresElegiveis.find(item => String(item.id) === String(colabId));
+    if (c && box) {
+      document.getElementById('folha-info-matricula').textContent = c.matricula;
+      document.getElementById('folha-info-cargo').textContent = c.cargo;
+      document.getElementById('folha-info-setor').textContent = c.setor;
+      document.getElementById('folha-info-salario').textContent = formatarMoeda(c.salario_base);
+      document.getElementById('folha-info-dependentes').textContent = String(c.total_dependentes || 0);
+      box.style.display = 'block';
+    }
+  },
+
+  renderizarRubricasManuais() {
+    const wrapper = document.getElementById('wrapper-rubricas-manuais');
+    const corpo = document.getElementById('corpo-rubricas-manuais');
+    if (!wrapper || !corpo) return;
+
+    if (this.rubricasManuais.length === 0) {
+      wrapper.style.display = 'none';
+      corpo.innerHTML = '';
+      return;
+    }
+
+    wrapper.style.display = 'block';
+    corpo.innerHTML = '';
+
+    this.rubricasManuais.forEach((rub, idx) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>
+          <select class="form-control select-control rub-tipo" data-idx="${idx}" style="font-size: 0.8rem; padding: 0.25rem;">
+            <option value="provento" ${rub.tipo === 'provento' ? 'selected' : ''}>Provento (+)</option>
+            <option value="desconto" ${rub.tipo === 'desconto' ? 'selected' : ''}>Desconto (-)</option>
+          </select>
+        </td>
+        <td>
+          <input type="text" class="form-control rub-desc" data-idx="${idx}" value="${rub.descricao}" placeholder="Ex: Gratificação..." style="font-size: 0.8rem; padding: 0.25rem;">
+        </td>
+        <td>
+          <input type="number" class="form-control rub-ref" data-idx="${idx}" value="${rub.referencia}" min="1" step="0.5" style="font-size: 0.8rem; padding: 0.25rem;">
+        </td>
+        <td>
+          <input type="number" class="form-control rub-val" data-idx="${idx}" value="${rub.valor_total}" min="0.01" step="0.01" style="font-size: 0.8rem; padding: 0.25rem;">
+        </td>
+        <td class="text-right">
+          <button type="button" class="btn-clear rub-remover" data-idx="${idx}" title="Remover rubrica" style="font-size: 1rem;">&times;</button>
+        </td>
+      `;
+      corpo.appendChild(tr);
+    });
+
+    corpo.querySelectorAll('.rub-tipo').forEach(el => {
+      el.addEventListener('change', (e) => {
+        this.rubricasManuais[e.target.dataset.idx].tipo = e.target.value;
+        this.atualizarPreviaCalculo();
+      });
+    });
+
+    corpo.querySelectorAll('.rub-desc').forEach(el => {
+      el.addEventListener('input', (e) => {
+        this.rubricasManuais[e.target.dataset.idx].descricao = e.target.value;
+      });
+    });
+
+    corpo.querySelectorAll('.rub-ref').forEach(el => {
+      el.addEventListener('input', (e) => {
+        this.rubricasManuais[e.target.dataset.idx].referencia = Number(e.target.value || 0);
+        this.atualizarPreviaCalculo();
+      });
+    });
+
+    corpo.querySelectorAll('.rub-val').forEach(el => {
+      el.addEventListener('input', (e) => {
+        this.rubricasManuais[e.target.dataset.idx].valor_total = Number(e.target.value || 0);
+        this.atualizarPreviaCalculo();
+      });
+    });
+
+    corpo.querySelectorAll('.rub-remover').forEach(el => {
+      el.addEventListener('click', (e) => {
+        this.rubricasManuais.splice(Number(e.target.dataset.idx), 1);
+        this.renderizarRubricasManuais();
+        this.atualizarPreviaCalculo();
+      });
+    });
+  },
+
+  coletarEventosDoFormulario() {
+    const eventos = [];
+    const he50 = Number(document.getElementById('folha-campo-he50').value || 0);
+    const he100 = Number(document.getElementById('folha-campo-he100').value || 0);
+    const noturno = Number(document.getElementById('folha-campo-noturno').value || 0);
+    const faltas = Number(document.getElementById('folha-campo-faltas').value || 0);
+    const atrasos = Number(document.getElementById('folha-campo-atrasos').value || 0);
+
+    if (he50 > 0) eventos.push({ codigo: 'HE50', quantidade: he50, percentual: 50.0 });
+    if (he100 > 0) eventos.push({ codigo: 'HE100', quantidade: he100, percentual: 100.0 });
+    if (noturno > 0) eventos.push({ codigo: 'NOTURNO', quantidade: noturno, percentual: 20.0 });
+    if (faltas > 0) eventos.push({ codigo: 'FALTA', quantidade: faltas });
+    if (atrasos > 0) eventos.push({ codigo: 'ATRASO', quantidade: atrasos });
+
+    this.rubricasManuais.forEach((r, i) => {
+      if (r.valor_total > 0 && r.descricao) {
+        eventos.push({
+          codigo: `MANUAL_${i+1}`,
+          descricao: r.descricao,
+          tipo: r.tipo,
+          referencia: r.referencia,
+          valor_total: r.valor_total
+        });
+      }
+    });
+
+    return eventos;
+  },
+
+  atualizarPreviaCalculo() {
+    const colabId = document.getElementById('folha-campo-colaborador').value;
+    const dias = Number(document.getElementById('folha-campo-dias').value || 30);
+    const divisor = Number(document.getElementById('folha-campo-divisor').value || 220);
+
+    const c = this.colaboradoresElegiveis.find(item => String(item.id) === String(colabId));
+    const sb = c ? Number(c.salario_base || 0) : 0;
+
+    const sbProp = (sb / 30) * Math.min(30, dias);
+    const vh = divisor > 0 ? (sb / divisor) : 0;
+
+    const he50 = Number(document.getElementById('folha-campo-he50').value || 0);
+    const he100 = Number(document.getElementById('folha-campo-he100').value || 0);
+    const noturno = Number(document.getElementById('folha-campo-noturno').value || 0);
+    const faltas = Number(document.getElementById('folha-campo-faltas').value || 0);
+    const atrasos = Number(document.getElementById('folha-campo-atrasos').value || 0);
+
+    let totProventos = sbProp;
+    totProventos += he50 * (vh * 1.5);
+    totProventos += he100 * (vh * 2.0);
+    totProventos += noturno * (vh * 0.2);
+
+    let totDescontos = 0;
+    totDescontos += faltas * (sb / 30);
+    totDescontos += atrasos * vh;
+
+    this.rubricasManuais.forEach(r => {
+      if (r.tipo === 'provento') totProventos += Number(r.valor_total || 0);
+      else totDescontos += Number(r.valor_total || 0);
+    });
+
+    // Estimativa de INSS básico para prévia rápida no cliente
+    let estInss = 0;
+    if (totProventos > 0) {
+      if (totProventos <= 1518.00) estInss = totProventos * 0.075;
+      else if (totProventos <= 2793.88) estInss = 113.85 + (totProventos - 1518.00) * 0.09;
+      else if (totProventos <= 4190.83) estInss = 113.85 + 114.83 + (totProventos - 2793.88) * 0.12;
+      else estInss = Math.min(908.85, 113.85 + 114.83 + 167.63 + (totProventos - 4190.83) * 0.14);
+    }
+    totDescontos += estInss;
+
+    const liquido = Math.max(0, totProventos - totDescontos);
+
+    document.getElementById('preview-salario-prop').textContent = formatarMoeda(sbProp);
+    document.getElementById('preview-total-proventos').textContent = formatarMoeda(totProventos);
+    document.getElementById('preview-total-descontos').textContent = formatarMoeda(totDescontos);
+    document.getElementById('preview-salario-liquido').textContent = formatarMoeda(liquido);
+  },
+
+  async salvarFolha() {
+    const colabId = document.getElementById('folha-campo-colaborador').value;
+    const competencia = document.getElementById('folha-campo-competencia').value;
+    const inicio = document.getElementById('folha-campo-inicio').value;
+    const fim = document.getElementById('folha-campo-fim').value;
+    const pagto = document.getElementById('folha-campo-pagamento').value;
+    const dias = Number(document.getElementById('folha-campo-dias').value || 30);
+    const divisor = Number(document.getElementById('folha-campo-divisor').value || 220);
+    const observacoes = document.getElementById('folha-campo-observacoes').value;
+    const folhaId = document.getElementById('folha-id-edicao').value;
+
+    const alerta = document.getElementById('folha-form-alerta');
+    alerta.classList.add('hidden');
+
+    if (!colabId) {
+      alerta.textContent = 'Selecione um colaborador ativo para a folha.';
+      alerta.classList.remove('hidden');
+      return;
+    }
+
+    if (!competencia) {
+      alerta.textContent = 'Informe a competência no formato AAAA-MM.';
+      alerta.classList.remove('hidden');
+      return;
+    }
+
+    const payload = {
+      colaborador_id: Number(colabId),
+      competencia: competencia.trim(),
+      periodo_inicio: inicio,
+      periodo_fim: fim,
+      data_pagamento: pagto || null,
+      dias_trabalhados: dias,
+      dias_mes: 30,
+      horas_divisor: divisor,
+      eventos: this.coletarEventosDoFormulario(),
+      observacoes: observacoes
+    };
+
+    const metodo = folhaId ? 'PUT' : 'POST';
+    const url = folhaId ? `${API_BASE}/folha/${folhaId}` : `${API_BASE}/folha`;
+
+    try {
+      const resp = await fetch(url, {
+        method: metodo,
+        headers: getAuthHeaders(),
+        credentials: 'include',
+        body: json.stringify ? JSON.stringify(payload) : null
+      });
+
+      const resJson = await resp.json();
+
+      if (!resp.ok) {
+        if (resJson.erros && resJson.erros.competencia) {
+          alerta.textContent = resJson.erros.competencia;
+        } else {
+          alerta.textContent = resJson.mensagem || 'Ocorreu um erro ao processar a folha.';
+        }
+        alerta.classList.remove('hidden');
+        return;
+      }
+
+      exibirToast(folhaId ? 'Folha recalculada com sucesso!' : 'Folha de pagamento gerada com sucesso!', 'success');
+      document.getElementById('modal-folha-form').classList.add('hidden');
+      await this.carregarFolhas();
+      // Abre o demonstrativo detalhado imediatamente para conferência
+      if (resJson.dados && resJson.dados.id) {
+        this.abrirModalHolerite(resJson.dados.id);
+      }
+    } catch (e) {
+      console.error('Falha ao salvar folha:', e);
+      alerta.textContent = 'Erro de comunicação com o servidor backend.';
+      alerta.classList.remove('hidden');
+    }
+  },
+
+  async abrirModalHolerite(folhaId) {
+    try {
+      const resp = await fetch(`${API_BASE}/folha/${folhaId}`, {
+        headers: getAuthHeaders(),
+        credentials: 'include'
+      });
+      if (!resp.ok) {
+        exibirToast('Não foi possível obter os dados do holerite.', 'error');
+        return;
+      }
+
+      const json = await resp.json();
+      const f = json.dados;
+      this.folhaParaFecharOuReabrir = f;
+
+      // Preencher Contracheque
+      document.getElementById('h-competencia').textContent = f.competencia;
+      document.getElementById('h-matricula').textContent = f.colaborador_matricula || '--';
+      document.getElementById('h-nome').textContent = f.colaborador_nome || '--';
+      document.getElementById('h-cpf').textContent = formatarCpf(f.colaborador_cpf || '');
+      document.getElementById('h-cargo').textContent = f.colaborador_cargo || '--';
+      document.getElementById('h-setor').textContent = f.colaborador_setor || '--';
+      document.getElementById('h-admissao').textContent = formatarDataBR(f.colaborador_data_admissao);
+      document.getElementById('h-data-pagto').textContent = formatarDataBR(f.data_pagamento) || '05 do mês subsequente';
+
+      // Itens discriminados
+      const corpoItens = document.getElementById('h-corpo-itens');
+      corpoItens.innerHTML = '';
+
+      (f.itens || []).forEach(it => {
+        const tr = document.createElement('tr');
+        const isProvento = it.tipo === 'provento';
+        const isDesconto = it.tipo === 'desconto';
+
+        let refStr = '--';
+        if (it.referencia > 0) {
+          refStr = `${it.referencia} ${it.unidade_referencia || ''}`;
+        }
+
+        tr.innerHTML = `
+          <td><strong>${it.codigo_evento}</strong></td>
+          <td>${it.descricao} ${it.tipo === 'informativo' ? '<span class="text-xs text-muted">(Informativo)</span>' : ''}</td>
+          <td style="text-align: center;">${refStr}</td>
+          <td style="text-align: right; font-weight: ${isProvento ? '600' : 'normal'}; color: ${isProvento ? '#166534' : 'inherit'};">
+            ${isProvento ? formatarMoeda(it.valor_total) : ''}
+          </td>
+          <td style="text-align: right; font-weight: ${isDesconto ? '600' : 'normal'}; color: ${isDesconto ? '#991b1b' : 'inherit'};">
+            ${isDesconto ? formatarMoeda(it.valor_total) : ''}
+          </td>
+        `;
+        corpoItens.appendChild(tr);
+      });
+
+      // Totais e bases
+      document.getElementById('h-total-proventos').textContent = formatarMoeda(f.total_proventos);
+      document.getElementById('h-total-descontos').textContent = formatarMoeda(f.total_descontos);
+      document.getElementById('h-salario-liquido').textContent = formatarMoeda(f.salario_liquido);
+
+      document.getElementById('h-base-contratual').textContent = formatarMoeda(f.salario_base_contratual);
+      document.getElementById('h-base-inss').textContent = formatarMoeda(f.base_inss);
+      document.getElementById('h-base-fgts').textContent = formatarMoeda(f.base_fgts);
+      document.getElementById('h-valor-fgts').textContent = formatarMoeda(f.valor_fgts_informativo);
+      document.getElementById('h-base-irrf').textContent = formatarMoeda(f.base_irrf);
+
+      // Memória de cálculo detalhada
+      const containerMem = document.getElementById('h-memoria-linhas');
+      containerMem.innerHTML = '';
+      (f.itens || []).forEach(it => {
+        if (it.memoria_calculo) {
+          const div = document.createElement('div');
+          div.className = 'memoria-linha';
+          div.innerHTML = `<strong>[${it.codigo_evento}] ${it.descricao}:</strong> ${it.memoria_calculo}`;
+          containerMem.appendChild(div);
+        }
+      });
+
+      // Auditoria
+      const timeline = document.getElementById('h-auditoria-timeline');
+      timeline.innerHTML = '';
+      const divCriador = document.createElement('div');
+      divCriador.innerHTML = `&bull; <strong>Criada por:</strong> ${f.criado_por} em ${f.criado_em}`;
+      timeline.appendChild(divCriador);
+
+      if (f.fechado_por) {
+        const divFechador = document.createElement('div');
+        divFechador.innerHTML = `&bull; <strong>Fechada por:</strong> ${f.fechado_por} em ${f.fechado_em}`;
+        timeline.appendChild(divFechador);
+      }
+
+      (f.historico || []).forEach(h => {
+        const divH = document.createElement('div');
+        divH.innerHTML = `&bull; [${h.data_hora}] <strong>${h.acao}:</strong> ${h.descricao} (${h.usuario_responsavel})`;
+        timeline.appendChild(divH);
+      });
+
+      // Visibilidade de botões contextuais
+      const btnFecharAcao = document.getElementById('btn-fechar-folha-acao');
+      const btnReabrirAcao = document.getElementById('btn-reabrir-folha-acao');
+      if (f.situacao === 'fechada') {
+        if (btnFecharAcao) btnFecharAcao.style.display = 'none';
+        if (btnReabrirAcao) btnReabrirAcao.style.display = 'inline-flex';
+      } else {
+        if (btnFecharAcao) btnFecharAcao.style.display = 'inline-flex';
+        if (btnReabrirAcao) btnReabrirAcao.style.display = 'none';
+      }
+
+      document.getElementById('modal-holerite').classList.remove('hidden');
+    } catch (e) {
+      console.error('Erro ao abrir demonstrativo da folha:', e);
+      exibirToast('Erro ao carregar demonstrativo.', 'error');
+    }
+  },
+
+  configurarEventosHolerite() {
+    const btnFecharX = document.getElementById('btn-fechar-holerite');
+    const btnFecharFooter = document.getElementById('btn-fechar-holerite-footer');
+    const btnImprimir = document.getElementById('btn-imprimir-holerite');
+    const btnFecharAcao = document.getElementById('btn-fechar-folha-acao');
+    const btnReabrirAcao = document.getElementById('btn-reabrir-folha-acao');
+
+    const fecharModal = () => document.getElementById('modal-holerite').classList.add('hidden');
+
+    if (btnFecharX) btnFecharX.addEventListener('click', fecharModal);
+    if (btnFecharFooter) btnFecharFooter.addEventListener('click', fecharModal);
+
+    if (btnImprimir) {
+      btnImprimir.addEventListener('click', () => {
+        window.print();
+      });
+    }
+
+    if (btnFecharAcao) {
+      btnFecharAcao.addEventListener('click', () => {
+        if (this.folhaParaFecharOuReabrir) {
+          this.solicitarFechamento(this.folhaParaFecharOuReabrir.id);
+        }
+      });
+    }
+
+    if (btnReabrirAcao) {
+      btnReabrirAcao.addEventListener('click', () => {
+        if (this.folhaParaFecharOuReabrir) {
+          this.solicitarReabertura(this.folhaParaFecharOuReabrir.id);
+        }
+      });
+    }
+
+    // Modal de fechamento
+    document.getElementById('btn-cancelar-fechamento').addEventListener('click', () => {
+      document.getElementById('modal-fechar-folha-confirm').classList.add('hidden');
+    });
+    document.getElementById('btn-cancelar-fechamento-topo').addEventListener('click', () => {
+      document.getElementById('modal-fechar-folha-confirm').classList.add('hidden');
+    });
+    document.getElementById('btn-confirmar-fechamento').addEventListener('click', () => {
+      this.executarFechamento();
+    });
+
+    // Modal de reabertura
+    document.getElementById('btn-cancelar-reabertura').addEventListener('click', () => {
+      document.getElementById('modal-reabrir-folha-confirm').classList.add('hidden');
+    });
+    document.getElementById('btn-cancelar-reabertura-topo').addEventListener('click', () => {
+      document.getElementById('modal-reabrir-folha-confirm').classList.add('hidden');
+    });
+    document.getElementById('btn-confirmar-reabertura').addEventListener('click', () => {
+      this.executarReabertura();
+    });
+
+    // Modal de parâmetros
+    document.getElementById('btn-fechar-parametros').addEventListener('click', () => {
+      document.getElementById('modal-parametros-folha').classList.add('hidden');
+    });
+    document.getElementById('btn-fechar-parametros-footer').addEventListener('click', () => {
+      document.getElementById('modal-parametros-folha').classList.add('hidden');
+    });
+  },
+
+  solicitarFechamento(folhaId) {
+    const f = this.folhas.find(item => String(item.id) === String(folhaId)) || this.folhaParaFecharOuReabrir;
+    if (!f) return;
+    this.folhaParaFecharOuReabrir = f;
+
+    const elInfo = document.getElementById('fechar-folha-info');
+    if (elInfo) {
+      elInfo.innerHTML = `
+        <strong>Colaborador:</strong> ${f.colaborador_nome || ''} (Matrícula: ${f.colaborador_matricula || ''})<br>
+        <strong>Competência:</strong> ${f.competencia} &bull; <strong>Líquido:</strong> ${formatarMoeda(f.salario_liquido)}
+      `;
+    }
+    document.getElementById('modal-fechar-folha-confirm').classList.remove('hidden');
+  },
+
+  async executarFechamento() {
+    if (!this.folhaParaFecharOuReabrir) return;
+    const folhaId = this.folhaParaFecharOuReabrir.id;
+    try {
+      const resp = await fetch(`${API_BASE}/folha/${folhaId}/fechar`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        credentials: 'include'
+      });
+      const json = await resp.json();
+      if (!resp.ok) {
+        exibirToast(json.mensagem || 'Falha ao fechar folha.', 'error');
+        return;
+      }
+      exibirToast(`Folha #${folhaId} homologada e fechada com sucesso!`, 'success');
+      document.getElementById('modal-fechar-folha-confirm').classList.add('hidden');
+      document.getElementById('modal-holerite').classList.add('hidden');
+      await this.carregarFolhas();
+    } catch (e) {
+      console.error('Erro ao fechar folha:', e);
+      exibirToast('Erro de comunicação ao fechar folha.', 'error');
+    }
+  },
+
+  solicitarReabertura(folhaId) {
+    const f = this.folhas.find(item => String(item.id) === String(folhaId)) || this.folhaParaFecharOuReabrir;
+    if (!f) return;
+    this.folhaParaFecharOuReabrir = f;
+    document.getElementById('reabrir-folha-motivo').value = '';
+    document.getElementById('erro-reabrir-folha-motivo').classList.add('hidden');
+    document.getElementById('modal-reabrir-folha-confirm').classList.remove('hidden');
+  },
+
+  async executarReabertura() {
+    if (!this.folhaParaFecharOuReabrir) return;
+    const folhaId = this.folhaParaFecharOuReabrir.id;
+    const motivo = document.getElementById('reabrir-folha-motivo').value.trim();
+    const erroEl = document.getElementById('erro-reabrir-folha-motivo');
+
+    if (!motivo || motivo.length < 5) {
+      erroEl.textContent = 'Informe uma justificativa válida com no mínimo 5 caracteres.';
+      erroEl.classList.remove('hidden');
+      return;
+    }
+
+    try {
+      const resp = await fetch(`${API_BASE}/folha/${folhaId}/reabrir`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        credentials: 'include',
+        body: JSON.stringify({ motivo })
+      });
+      const json = await resp.json();
+      if (!resp.ok) {
+        exibirToast(json.mensagem || 'Falha ao reabrir folha.', 'error');
+        return;
+      }
+      exibirToast(`Folha #${folhaId} reaberta para edição!`, 'success');
+      document.getElementById('modal-reabrir-folha-confirm').classList.add('hidden');
+      document.getElementById('modal-holerite').classList.add('hidden');
+      await this.carregarFolhas();
+    } catch (e) {
+      console.error('Erro ao reabrir folha:', e);
+      exibirToast('Erro de comunicação ao reabrir folha.', 'error');
+    }
+  },
+
+  async excluirFolha(folhaId) {
+    if (!confirm(`Deseja realmente cancelar e excluir a folha #${folhaId}? Esta ação não pode ser desfeita.`)) {
+      return;
+    }
+    try {
+      const resp = await fetch(`${API_BASE}/folha/${folhaId}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+        credentials: 'include'
+      });
+      const json = await resp.json();
+      if (!resp.ok) {
+        exibirToast(json.mensagem || 'Não foi possível cancelar a folha.', 'error');
+        return;
+      }
+      exibirToast(`Folha #${folhaId} cancelada com sucesso.`, 'success');
+      await this.carregarFolhas();
+    } catch (e) {
+      console.error('Erro ao cancelar folha:', e);
+      exibirToast('Erro ao cancelar folha.', 'error');
+    }
+  },
+
+  async abrirModalParametros() {
+    await this.carregarParametros();
+    const p = this.parametrosVigentes;
+    if (!p) {
+      exibirToast('Parâmetros indisponíveis no momento.', 'warning');
+      return;
+    }
+
+    document.getElementById('param-codigo').value = p.codigo || '';
+    document.getElementById('param-descricao').value = p.descricao || '';
+    document.getElementById('param-divisor').value = p.horas_mensais_padrao || 220;
+    document.getElementById('param-dias').value = p.dias_mes_padrao || 30;
+    document.getElementById('param-he50').value = p.percentual_he_padrao || 50;
+    document.getElementById('param-he100').value = p.percentual_he_extra || 100;
+    document.getElementById('param-noturno').value = p.percentual_adicional_noturno || 20;
+    document.getElementById('param-teto-inss').value = p.teto_inss || 8157.41;
+    document.getElementById('param-deducao-dep').value = p.deducao_dependente_irrf || 189.59;
+
+    document.getElementById('modal-parametros-folha').classList.remove('hidden');
+  }
+};
+
 // Inicialização
 document.addEventListener('DOMContentLoaded', () => {
   configurarEventos();
   AuthManager.inicializar();
+  FolhaManager.inicializar();
 });
