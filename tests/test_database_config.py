@@ -40,7 +40,15 @@ class TestDatabaseConfiguration(unittest.TestCase):
 
     def test_postgres_url_from_marketplace_is_detected(self):
         """URLs de integracoes Marketplace sao reconhecidas para selecionar PostgreSQL."""
-        with patch.dict(os.environ, {"VERCEL": "1", "POSTGRES_URL": "postgresql://user:pass@db.example.test/app"}, clear=False):
+        with patch.dict(os.environ, {
+            "VERCEL": "1",
+            "DATABASE_URL": "",
+            "POSTGRES_URL": "postgresql://user:pass@db.example.test/app",
+            "POSTGRES_PRISMA_URL": "",
+            "POSTGRES_URL_NON_POOLING": "",
+            "PGHOST": "",
+            "PGDATABASE": "",
+        }, clear=False):
             self.assertTrue(_usar_postgres())
             self.assertEqual(get_database_url(), "postgresql://user:pass@db.example.test/app")
 
