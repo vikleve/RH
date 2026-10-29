@@ -115,7 +115,7 @@ def get_connection(db_path: str = None):
     if _usar_postgres(db_path):
         return _get_pg_conn()
 
-    if not db_path and os.environ.get("VERCEL") and not get_database_url():
+    if not db_path and os.environ.get("VERCEL") == "1" and not get_database_url():
         raise RuntimeError(
             "Banco persistente nao configurado na Vercel. "
             "Conecte um PostgreSQL pelo Marketplace e defina DATABASE_URL "
