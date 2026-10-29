@@ -103,13 +103,27 @@ def _get_sqlite_conn(db_path: str = None) -> sqlite3.Connection:
 
 def get_connection(db_path: str = None):
     """
-    Retorna conexao ao banco de dados correto:
-      - SQLite no caminho db_path se fornecido (testes isolados / dev especifico)
-      - PostgreSQL se DATABASE_URL estiver definida e db_path nao for fornecido
-      - SQLite padrao caso contrario
+    Retorna conexao ao banco adequado ao ambiente.
+
+    - SQLite com db_path explicito: testes isolados e desenvolvimento controlado.
+    - PostgreSQL: quando uma URL de banco persistente estiver configurada.
+    - SQLite local: desenvolvimento fora da Vercel, sem URL de PostgreSQL.
+
+    Em Vercel, nunca recorrer silenciosamente a SQLite em /tmp: esse sistema
+    de arquivos nao e uma base compartilhada/duravel para funcoes serverless.
     """
     if _usar_postgres(db_path):
         return _get_pg_conn()
+
+    if not db_path and os.environ.get("VERCEL") == "1" and not get_database_url():
+        raise RuntimeError(
+            "Banco persistente nao configurado na Vercel. "
+            "Conecte um PostgreSQL pelo Marketplace e defina DATABASE_URL "
+            "ou POSTGRES_URL no ambiente deste projeto. "
+            "A aplicacao recusou o SQLite temporario para evitar perda ou "
+            "fragmentacao de sessoes e cadastros entre funcoes serverless."
+        )
+
     return _get_sqlite_conn(db_path)
 
 
